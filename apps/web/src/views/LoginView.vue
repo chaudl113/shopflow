@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { toTypedSchema } from '@vee-validate/zod';
+import { ArrowLeftIcon } from '@lucide/vue';
 import { useForm } from 'vee-validate';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -41,8 +42,13 @@ const submit = form.handleSubmit(async (values) => {
 
 <template>
   <div class="relative flex min-h-screen items-center justify-center bg-muted/40 p-4">
-    <ThemeToggle class="absolute top-3 right-3" />
-    <div class="w-full max-w-md space-y-4">
+    <div class="absolute top-3 right-3 left-3 flex items-center justify-between">
+      <Button variant="ghost" size="sm" as-child>
+        <RouterLink to="/"><ArrowLeftIcon /> About ShopFlow</RouterLink>
+      </Button>
+      <ThemeToggle />
+    </div>
+    <div class="w-full max-w-md space-y-4 pt-10">
       <div class="flex items-center justify-center gap-2">
         <img src="/favicon.svg" alt="" class="size-9" />
         <span class="text-2xl font-semibold tracking-tight">ShopFlow</span>

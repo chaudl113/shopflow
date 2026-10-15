@@ -11,6 +11,9 @@ async function shot(page: Page, name: string, fullPage = false) {
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage, animations: 'disabled' });
 }
 const settle = (page: Page) => page.waitForLoadState('networkidle');
+/** The landing page shows real screens too: one viewport, compressed. */
+const forLanding = (page: Page, name: string) =>
+  page.screenshot({ path: `apps/web/public/landing/${name}.jpg`, type: 'jpeg', quality: 78, animations: 'disabled' });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -23,6 +26,7 @@ test.describe('desktop 1440', () => {
     await expect(page.locator('[data-loaded="30d:all"]')).toBeVisible();
     await settle(page);
     await shot(page, 'desktop-dashboard', true);
+    await forLanding(page, 'dashboard');
     await page.getByRole('button', { name: 'Switch to dark mode' }).click();
     await page.mouse.move(0, 0);
     await shot(page, 'desktop-dashboard-dark', true);
@@ -47,6 +51,7 @@ test.describe('desktop 1440', () => {
     await settle(page);
     await expect(page.getByTestId('cart-total')).not.toHaveText('$0.00');
     await shot(page, 'desktop-pos');
+    await forLanding(page, 'pos');
     await page.getByRole('button', { name: /^Charge/ }).click();
     const pay = page.getByRole('dialog');
     await pay.getByRole('radio', { name: 'Cash' }).or(pay.getByRole('button', { name: 'Cash', exact: true })).click();
@@ -95,10 +100,29 @@ test.describe('desktop 1440', () => {
     await settle(page);
     await shot(page, 'desktop-transfers');
   });
+
+  test('visitor: landing page and one-click demo sign-in', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.locator('main img').last().scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await shot(page, 'desktop-landing', true);
+    await page.getByRole('link', { name: 'Sign in' }).click();
+    await expect(page.getByRole('button', { name: /Try as Owner/ })).toBeVisible();
+    await shot(page, 'desktop-login');
+  });
 });
 
 test.describe('mobile 390', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+
+  test('landing page', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /Try as Cashier/ })).toBeVisible();
+    await settle(page);
+    await shot(page, 'mobile-landing');
+  });
 
   test('public booking page', async ({ page }) => {
     await page.goto('/book/downtown');

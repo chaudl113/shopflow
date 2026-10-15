@@ -25,7 +25,7 @@ export default defineConfig({
     { command: 'npm run dev:web', url: 'http://localhost:5201', reuseExistingServer: true, timeout: 60_000 },
   ],
   projects: [
-    { name: 'e2e', testMatch: /flow\.spec\.ts/ },
+    { name: 'e2e', testMatch: /(flow|landing)\.spec\.ts/ },
     { name: 'screenshots', testMatch: /screenshots\.spec\.ts/ },
   ],
 });

@@ -15,6 +15,16 @@ const sellers: Role[] = ['owner', 'manager', 'cashier'];
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/',
+      component: () => import('@/views/LandingView.vue'),
+      meta: { public: true },
+      // Signed-in people go straight to their work; the landing page is for visitors.
+      beforeEnter: () => {
+        const user = useSession().user;
+        return user ? homeFor(user.role) : true;
+      },
+    },
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
     { path: '/book/:slug', component: () => import('@/views/PublicBookingView.vue'), meta: { public: true } },
     { path: '/receipt/:id', component: () => import('@/views/ReceiptView.vue') },
@@ -22,7 +32,6 @@ export const router = createRouter({
       path: '/',
       component: AppShell,
       children: [
-        { path: '', redirect: () => homeFor(useSession().user?.role ?? 'staff') },
         { path: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { roles: ['owner', 'manager'] } },
         { path: 'pos', component: () => import('@/views/PosView.vue'), meta: { roles: sellers } },
         { path: 'sales', component: () => import('@/views/SalesView.vue'), meta: { roles: sellers } },
