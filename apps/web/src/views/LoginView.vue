@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { toTypedSchema } from '@vee-validate/zod';
-import { ArrowRightIcon } from '@lucide/vue';
 import { useForm } from 'vee-validate';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
+import DemoEntry from '@/components/DemoEntry.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { useAppMeta } from '@/lib/meta';
 import { homeFor } from '@/lib/nav';
 import { toast } from '@/lib/notify';
 import { useSession } from '@/stores/session';
@@ -17,7 +18,9 @@ import { useSession } from '@/stores/session';
 const session = useSession();
 const router = useRouter();
 const route = useRoute();
+const { meta } = useAppMeta();
 const busy = ref(false);
+const next = computed(() => (typeof route.query.next === 'string' ? route.query.next : undefined));
 
 const form = useForm({
   validationSchema: toTypedSchema(z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Enter your password') })),
@@ -27,26 +30,13 @@ const submit = form.handleSubmit(async (values) => {
   busy.value = true;
   try {
     await session.login(values.email, values.password);
-    const next = typeof route.query.next === 'string' ? route.query.next : homeFor(session.user!.role);
-    router.push(next);
+    router.push(next.value ?? homeFor(session.user!.role));
   } catch (e) {
     toast.error(e);
   } finally {
     busy.value = false;
   }
 });
-
-const demo = [
-  { email: 'owner@shopflow.demo', label: 'Owner', hint: 'Everything, all stores' },
-  { email: 'manager@shopflow.demo', label: 'Manager', hint: 'Downtown + warehouse' },
-  { email: 'cashier@shopflow.demo', label: 'Cashier', hint: 'POS, shifts, returns' },
-  { email: 'mia@shopflow.demo', label: 'Stylist', hint: 'Own appointments' },
-];
-
-function useDemo(email: string) {
-  form.setValues({ email, password: 'demo1234' });
-  submit();
-}
 </script>
 
 <template>
@@ -59,8 +49,20 @@ function useDemo(email: string) {
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>Multi-store POS, inventory and bookings.</CardDescription>
+          <CardTitle>{{ meta?.demo ? 'Try the live demo' : 'Demo accounts' }}</CardTitle>
+          <CardDescription>
+            <template v-if="meta?.demo">No sign-up needed. Accounts are shared and the demo data resets every night.</template>
+            <template v-else>Signs in with the seeded accounts (password demo1234).</template>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DemoEntry :next="next" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">Sign in with email</CardTitle>
+          <CardDescription v-if="meta?.demo">Demo accounts use the password demo1234.</CardDescription>
         </CardHeader>
         <CardContent>
           <form class="space-y-4" novalidate @submit="submit">
@@ -78,26 +80,10 @@ function useDemo(email: string) {
                 <FormMessage />
               </FormItem>
             </FormField>
-            <Button type="submit" class="w-full" :disabled="busy">Sign in</Button>
+            <Button type="submit" variant="secondary" class="w-full" :disabled="busy">Sign in</Button>
           </form>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-sm">Demo accounts</CardTitle>
-          <CardDescription>Password for all: demo1234</CardDescription>
-        </CardHeader>
-        <CardContent class="grid grid-cols-2 gap-2">
-          <Button v-for="d in demo" :key="d.email" variant="outline" class="h-auto flex-col items-start gap-0.5 py-2 text-left" @click="useDemo(d.email)">
-            <span class="text-sm font-medium">{{ d.label }}</span>
-            <span class="text-xs font-normal whitespace-normal text-muted-foreground">{{ d.hint }}</span>
-          </Button>
-        </CardContent>
-      </Card>
-      <p class="text-center text-xs text-muted-foreground">
-        Customer booking page:
-        <RouterLink to="/book/downtown" class="inline-flex items-center gap-0.5 text-primary underline-offset-4 hover:underline">/book/downtown <ArrowRightIcon class="size-3" /></RouterLink>
-      </p>
     </div>
   </div>
 </template>

@@ -70,11 +70,19 @@ export const useSession = defineStore('session', () => {
     await loadStores();
   }
 
+  /** Public demo only: sign in to a shared demo account without a password. */
+  async function loginDemo(as: 'owner' | 'manager' | 'cashier' | 'stylist') {
+    const res = await api.post<{ token: string; user: User }>('/auth/demo', { as });
+    tokenStore.set(res.token);
+    user.value = res.user;
+    await loadStores();
+  }
+
   function logout() {
     tokenStore.set(null);
     user.value = null;
     stores.value = [];
   }
 
-  return { user, stores, storeId, currentStore, ready, can, restore, login, logout, selectStore, loadStores };
+  return { user, stores, storeId, currentStore, ready, can, restore, login, loginDemo, logout, selectStore, loadStores };
 });
