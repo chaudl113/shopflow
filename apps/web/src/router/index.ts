@@ -16,6 +16,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/book/:slug', component: () => import('@/views/PublicBookingView.vue'), meta: { public: true } },
     { path: '/receipt/:id', component: () => import('@/views/ReceiptView.vue') },
     {
       path: '/',
@@ -25,6 +26,7 @@ export const router = createRouter({
         { path: 'pos', component: () => import('@/views/PosView.vue'), meta: { roles: sellers } },
         { path: 'sales', component: () => import('@/views/SalesView.vue'), meta: { roles: sellers } },
         { path: 'shifts', component: () => import('@/views/ShiftsView.vue'), meta: { roles: sellers } },
+        { path: 'bookings', component: () => import('@/views/BookingsView.vue') },
         { path: 'products', component: () => import('@/views/ProductsView.vue') },
         { path: 'transfers', component: () => import('@/views/TransfersView.vue'), meta: { roles: ['owner', 'manager'] } },
         { path: 'inventory', component: () => import('@/views/InventoryView.vue'), meta: { roles: ['owner', 'manager', 'cashier'] } },

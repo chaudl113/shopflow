@@ -5,6 +5,17 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+/*
+ * The shadcn-vue registry styles use state variants like `data-checked:`; reka-ui 2.x exposes
+ * state as data-state="checked" / data-orientation="vertical". Map both spellings.
+ */
+@custom-variant data-checked (&:is([data-state="checked"], [data-checked]:not([data-checked="false"])));
+@custom-variant data-unchecked (&:is([data-state="unchecked"], [data-unchecked]:not([data-unchecked="false"])));
+@custom-variant data-open (&:is([data-state="open"], [data-open]:not([data-open="false"])));
+@custom-variant data-closed (&:is([data-state="closed"], [data-closed]:not([data-closed="false"])));
+@custom-variant data-active (&:is([data-state="active"], [data-state="on"], [data-active]:not([data-active="false"])));
+@custom-variant data-vertical (&:is([data-orientation="vertical"], [data-vertical]:not([data-vertical="false"])));
+@custom-variant data-horizontal (&:is([data-orientation="horizontal"], [data-horizontal]:not([data-horizontal="false"])));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;

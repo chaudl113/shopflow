@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { completeBooking, lockBookingForSale } from '../booking/booking.js';
 import { findVariants } from '../catalog/catalog.js';
 import { db, type Tx } from '../db/client.js';
 import { payments, returnLines, saleLines, saleReturns, sales, stores, users } from '../db/schema.js';
@@ -26,6 +27,8 @@ export interface SaleInput extends CartInput {
   payments: PaymentInput[];
   customerName?: string;
   clientRef?: string;
+  /** Checking out an appointment: the booking is marked completed and linked to this sale. */
+  bookingId?: string;
 }
 
 /** Prices come from the catalog at the store, never from the client. */
@@ -73,6 +76,7 @@ export async function createSale(actorId: string, input: SaleInput, opts: { at?:
       }
     }
     const shift = await requireOpenShift(tx, actorId, input.storeId);
+    if (input.bookingId) await lockBookingForSale(tx, input.bookingId, input.storeId);
     const { store, items, priced } = await quoteCart(tx, input);
     const settled = settlePayments(priced.totalCents, input.payments);
     const saleId = randomUUID();
@@ -127,6 +131,7 @@ export async function createSale(actorId: string, input: SaleInput, opts: { at?:
     if (settled.payments.length) {
       await tx.insert(payments).values(settled.payments.map((p) => ({ ...p, shiftId: shift.id, saleId, ...at })));
     }
+    if (input.bookingId) await completeBooking(tx, input.bookingId, saleId);
     return { id: saleId, number, replayed: false };
   };
   return opts.tx ? run(opts.tx) : db.transaction(run);

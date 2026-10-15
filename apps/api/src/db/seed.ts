@@ -6,7 +6,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 import { hashPassword } from '../auth.js';
+import { createBooking, setStaffSchedule } from '../booking/booking.js';
 import { applyMovements } from '../inventory/ledger.js';
 import { getTransfers, receiveTransfer, sendTransfer } from '../transfers/transfers.js';
 import { db, pool } from './client.js';
@@ -144,6 +146,57 @@ export async function seed() {
     { variantId: variantBySku.get('NAIL-RBY')!.id, qty: 12 },
     { variantId: variantBySku.get('DRY-ION-PL')!.id, qty: 3 },
   ] }, { at: daysAgo(0, 9) });
+
+  // Team schedules: weekly hours per store and the services each person performs.
+  const svc = (...names: string[]) => names.map((n) => productByName.get(n)!.id);
+  const H = (from: number, to: number, days: number[]) => days.map((weekday) => ({ weekday, startMin: from * 60, endMin: to * 60 }));
+  const mia = byEmail.get('mia@shopflow.demo')!;
+  const noah = byEmail.get('noah@shopflow.demo')!;
+  const ava = byEmail.get('ava@shopflow.demo')!;
+  await setStaffSchedule(downtown.id, mia.id, { hours: [...H(9, 17, [1, 2, 3, 4, 5, 6]), ...H(10, 16, [7])], productIds: svc("Women's Haircut", "Men's Haircut", 'Blow-dry & Style', 'Full Color') });
+  await setStaffSchedule(downtown.id, noah.id, { hours: H(10, 18, [1, 3, 5, 7]), productIds: svc("Men's Haircut", "Women's Haircut", 'Blow-dry & Style', 'Signature Facial') });
+  await setStaffSchedule(uptown.id, noah.id, { hours: H(10, 18, [2, 4, 6]) });
+  await setStaffSchedule(uptown.id, ava.id, { hours: [...H(9, 17, [1, 2, 3, 4, 5, 6]), ...H(10, 16, [7])], productIds: svc('Gel Manicure', 'Signature Facial', 'Blow-dry & Style') });
+
+  // A week of appointments, laid out from each person's start time so they always fall inside hours.
+  const customers = ['Emma Wilson', 'Sofia Martinez', 'Grace Lee', 'Liam Johnson', 'Olivia Brown', 'Ethan Davis', 'Ava Thompson', 'Lucas Garcia', 'Zoe Clark', 'Henry Lewis', 'Chloe Walker', 'Jack Hall', 'Lily Allen', 'Mason Young'];
+  const plan: Record<string, { offsetMin: number; service: string }[]> = {
+    [mia.id]: [{ offsetMin: 60, service: "Women's Haircut" }, { offsetMin: 150, service: 'Blow-dry & Style' }, { offsetMin: 300, service: 'Full Color' }],
+    [noah.id]: [{ offsetMin: 0, service: "Men's Haircut" }, { offsetMin: 90, service: 'Signature Facial' }, { offsetMin: 270, service: "Women's Haircut" }],
+    [ava.id]: [{ offsetMin: 30, service: 'Gel Manicure' }, { offsetMin: 180, service: 'Signature Facial' }],
+  };
+  const schedules = [
+    { store: downtown, people: [mia, noah] },
+    { store: uptown, people: [noah, ava] },
+  ];
+  let n = 0;
+  for (let d = 0; d < 7; d++) {
+    for (const { store, people } of schedules) {
+      const day = DateTime.now().setZone(store.timezone).startOf('day').plus({ days: d });
+      for (const person of people) {
+        const [hours] = await db.execute(sql`select start_min from staff_hours where store_id = ${store.id} and user_id = ${person.id} and weekday = ${day.weekday} order by start_min limit 1`).then((r) => r.rows as { start_min: number }[]);
+        if (!hours) continue;
+        for (const [i, slot] of plan[person.id]!.entries()) {
+          if ((d + i) % 4 === 3) continue; // leave some gaps so the week does not look fully booked
+          const variant = [...variantBySku.values()].find((v) => v.productId === productByName.get(slot.service)!.id)!;
+          await createBooking(
+            {
+              storeId: store.id,
+              variantId: variant.id,
+              staffId: person.id,
+              startsAt: day.set({ hour: Math.floor((hours.start_min + slot.offsetMin) / 60), minute: (hours.start_min + slot.offsetMin) % 60 }).toJSDate(),
+              customerName: customers[n % customers.length]!,
+              customerPhone: `(212) 555-01${String(10 + (n % 90)).padStart(2, '0')}`,
+              source: n % 3 === 0 ? 'online' : 'staff',
+              note: n % 5 === 0 ? 'Demo booking' : '',
+            },
+            { actorId: n % 3 === 0 ? null : manager.id, enforceHours: false },
+          );
+          n++;
+        }
+      }
+    }
+  }
 
   return { downtown, uptown, warehouse, byEmail, variantBySku, productByName, daysAgo };
 }

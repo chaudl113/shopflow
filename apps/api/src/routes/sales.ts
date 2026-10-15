@@ -37,6 +37,7 @@ const saleBody = cartBody.extend({
   payments: z.array(z.object({ method: z.enum(['cash', 'card', 'other']), amountCents: cents, reference: z.string().max(80).nullable().optional() })).max(5),
   customerName: z.string().trim().max(80).optional(),
   clientRef: uuid.optional(),
+  bookingId: uuid.optional(),
 });
 
 salesRouter.post('/', sellers, async (req, res) => {

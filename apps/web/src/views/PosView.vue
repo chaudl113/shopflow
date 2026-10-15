@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { CameraIcon, CircleCheckIcon, MinusIcon, PlusIcon, PrinterIcon, ScanBarcodeIcon, SearchIcon, ShoppingCartIcon, Trash2Icon, WarehouseIcon } from '@lucide/vue';
+import { CalendarDaysIcon, CameraIcon, CircleCheckIcon, GlobeIcon, MinusIcon, PlusIcon, PrinterIcon, ScanBarcodeIcon, SearchIcon, ShoppingCartIcon, Trash2Icon, WarehouseIcon, XIcon } from '@lucide/vue';
+import { DateTime } from 'luxon';
+import { useRoute } from 'vue-router';
 import BarcodeScanner from '@/components/BarcodeScanner.vue';
 import Modal from '@/components/Modal.vue';
 import OpenShiftForm from '@/components/OpenShiftForm.vue';
@@ -12,9 +14,11 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { api, ApiError } from '@/lib/api';
+import { statusLabel, type Booking } from '@/lib/booking';
 import { money, parseMoney } from '@/lib/format';
 import type { Method } from '@/lib/tender';
 import type { TeamMember, VariantView } from '@/lib/types';
@@ -37,6 +41,8 @@ const paying = ref(false);
 const busy = ref(false);
 const completed = ref<{ id: string; number: string; totalCents: number; changeCents: number } | null>(null);
 const cartOpen = ref(false);
+const route = useRoute();
+const tz = computed(() => session.currentStore?.timezone ?? 'America/New_York');
 
 const categories = computed(() => ['All', ...new Set(catalog.value.map((v) => v.category))]);
 const shown = computed(() => {
@@ -55,8 +61,47 @@ onMounted(async () => {
   catalog.value = v.variants;
   staff.value = u.users.filter((x) => x.bookable && x.active && x.storeIds.includes(storeId));
   await cart.refreshQuote(storeId);
+  if (typeof route.query.booking === 'string') {
+    try {
+      const { booking } = await api.get<{ booking: Booking }>(`/bookings/${route.query.booking}`);
+      if (booking.status === 'booked') checkoutBooking(booking);
+      else toast.info(`${booking.reference} is already ${statusLabel[booking.status].toLowerCase()}`);
+    } catch (e) {
+      toast.error(e);
+    }
+  }
   focusScan();
 });
+
+// Appointments: today's bookings can be pulled into the cart and are marked paid with the sale.
+const apptOpen = ref(false);
+const appts = ref<Booking[]>([]);
+const bookingInfo = ref<Booking | null>(null);
+async function openAppointments() {
+  apptOpen.value = true;
+  const day = DateTime.now().setZone(tz.value).startOf('day');
+  appts.value = (
+    await api.get<{ bookings: Booking[] }>('/bookings', { storeId, from: day.toUTC().toISO(), to: day.plus({ days: 1 }).toUTC().toISO() })
+  ).bookings.filter((b) => b.status === 'booked' || b.status === 'completed');
+}
+function checkoutBooking(b: Booking) {
+  const v = catalog.value.find((x) => x.id === b.variantId);
+  if (!v) return toast.error(`${b.serviceName} is not on sale at this store`);
+  cart.clear();
+  cart.add(v, { staffId: b.staffId });
+  cart.customerName = b.customerName;
+  cart.bookingId = b.id;
+  bookingInfo.value = b;
+  apptOpen.value = false;
+  cartOpen.value = true;
+}
+watch(
+  () => cart.bookingId,
+  (id) => {
+    if (!id) bookingInfo.value = null;
+  },
+);
+const apptTime = (iso: string) => DateTime.fromISO(iso).setZone(tz.value).toFormat('h:mm a');
 
 let quoteTimer: ReturnType<typeof setTimeout>;
 watch(
@@ -202,6 +247,7 @@ function setOrderDiscType(v: unknown) {
           />
         </InputGroup>
         <Button variant="outline" class="h-10" title="Scan with camera" @click="scanning = true"><CameraIcon /> <span class="hidden sm:inline">Camera</span></Button>
+        <Button variant="outline" class="h-10" title="Today's appointments" @click="openAppointments"><CalendarDaysIcon /> <span class="hidden sm:inline">Appointments</span></Button>
       </div>
       <div class="mb-3 flex items-center gap-2">
         <div class="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1">
@@ -241,6 +287,11 @@ function setOrderDiscType(v: unknown) {
         <span class="flex items-center gap-2 font-semibold"><ShoppingCartIcon class="size-4" /> Cart <span class="font-normal text-muted-foreground">· {{ cart.itemCount }} items</span></span>
         <span class="text-lg font-semibold tabular-nums lg:hidden">{{ money(cart.quote?.totalCents ?? 0) }}</span>
       </button>
+      <div v-if="bookingInfo" class="flex items-center gap-2 border-b bg-primary/5 px-4 py-2 text-sm" data-testid="cart-booking">
+        <CalendarDaysIcon class="size-4 text-primary" />
+        <span class="min-w-0 flex-1 truncate">Booking <span class="font-mono font-medium">{{ bookingInfo.reference }}</span> · {{ apptTime(bookingInfo.startsAt) }} · {{ bookingInfo.staffName }}</span>
+        <Button variant="ghost" size="icon-xs" aria-label="Detach booking" @click="cart.bookingId = null"><XIcon /></Button>
+      </div>
       <div class="flex-1 overflow-y-auto">
         <p v-if="!cart.lines.length" class="px-4 py-10 text-center text-sm text-muted-foreground">Scan an item or tap a product to start a sale.</p>
         <ul class="divide-y">
@@ -299,6 +350,27 @@ function setOrderDiscType(v: unknown) {
       </div>
     </aside>
   </div>
+
+  <Sheet v-model:open="apptOpen">
+    <SheetContent class="w-full sm:max-w-md">
+      <SheetHeader>
+        <SheetTitle>Today’s appointments</SheetTitle>
+        <SheetDescription>Check out a booking to charge it and mark it paid.</SheetDescription>
+      </SheetHeader>
+      <div class="flex-1 space-y-2 overflow-y-auto px-4 pb-4">
+        <p v-if="!appts.length" class="py-10 text-center text-sm text-muted-foreground">No appointments today.</p>
+        <div v-for="b in appts" :key="b.id" class="flex items-center gap-3 rounded-lg border border-l-[3px] p-3" :style="{ borderLeftColor: b.staffColor }" :data-testid="`appt-${b.reference}`">
+          <div class="w-16 shrink-0 text-sm font-semibold tabular-nums">{{ apptTime(b.startsAt) }}</div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1 truncate font-medium">{{ b.customerName }} <GlobeIcon v-if="b.source === 'online'" class="size-3 text-muted-foreground" /></div>
+            <div class="truncate text-xs text-muted-foreground">{{ b.serviceName }} · {{ b.staffName }} · {{ b.reference }}</div>
+          </div>
+          <Button v-if="b.status === 'booked'" size="sm" @click="checkoutBooking(b)">Check out</Button>
+          <Badge v-else variant="secondary">Paid</Badge>
+        </div>
+      </div>
+    </SheetContent>
+  </Sheet>
 
   <BarcodeScanner v-if="scanning" @detected="onCameraDetected" @close="scanning = false" />
   <PayModal v-if="paying && cart.quote" :total-cents="cart.quote.totalCents" :busy="busy" @close="paying = false" @pay="pay" />

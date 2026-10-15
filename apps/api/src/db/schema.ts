@@ -32,6 +32,8 @@ export const shiftStatus = pgEnum('shift_status', ['open', 'closed']);
 export const paymentMethod = pgEnum('payment_method', ['cash', 'card', 'other']);
 export const transferStatus = pgEnum('transfer_status', ['in_transit', 'received', 'cancelled']);
 export const cashMovementKind = pgEnum('cash_movement_kind', ['pay_in', 'pay_out']);
+export const bookingStatus = pgEnum('booking_status', ['booked', 'completed', 'cancelled', 'no_show']);
+export const bookingSource = pgEnum('booking_source', ['online', 'staff']);
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
@@ -314,4 +316,64 @@ export const transferLines = pgTable(
     qtyReceived: integer('qty_received'),
   },
   (t) => [index('transfer_lines_transfer_idx').on(t.transferId)],
+);
+
+/**
+ * Weekly working hours per store. Minutes after local midnight in the store's timezone, so a
+ * 09:00 start stays 09:00 across daylight-saving changes. Several rows per day = split shifts.
+ */
+export const staffHours = pgTable(
+  'staff_hours',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    storeId: uuid('store_id').notNull().references(() => stores.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** ISO weekday: 1 = Monday … 7 = Sunday. */
+    weekday: integer('weekday').notNull(),
+    startMin: integer('start_min').notNull(),
+    endMin: integer('end_min').notNull(),
+  },
+  (t) => [index('staff_hours_store_user_idx').on(t.storeId, t.userId)],
+);
+
+/** Services a team member is trained to perform. */
+export const staffServices = pgTable(
+  'staff_services',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.productId] })],
+);
+
+/**
+ * Appointments. Double booking is impossible at the database level: an exclusion constraint
+ * (see migration 0003) rejects any two live bookings of the same person whose time ranges overlap,
+ * even when both requests arrive at the same moment.
+ */
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Short code the customer quotes at the desk. */
+    reference: text('reference').notNull().unique(),
+    storeId: uuid('store_id').notNull().references(() => stores.id),
+    staffId: uuid('staff_id').notNull().references(() => users.id),
+    variantId: uuid('variant_id').notNull().references(() => variants.id),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    status: bookingStatus('status').notNull().default('booked'),
+    source: bookingSource('source').notNull(),
+    customerName: text('customer_name').notNull(),
+    customerPhone: text('customer_phone').notNull().default(''),
+    customerEmail: text('customer_email').notNull().default(''),
+    note: text('note').notNull().default(''),
+    /** Price shown when the booking was made; the POS still charges the current catalog price. */
+    quotedPriceCents: integer('quoted_price_cents').notNull(),
+    saleId: uuid('sale_id').unique().references(() => sales.id),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  },
+  (t) => [index('bookings_store_starts_idx').on(t.storeId, t.startsAt), index('bookings_staff_starts_idx').on(t.staffId, t.startsAt)],
 );
