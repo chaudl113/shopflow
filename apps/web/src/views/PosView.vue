@@ -284,7 +284,7 @@ function setOrderDiscType(v: unknown) {
       aria-label="Cart"
     >
       <button class="flex items-center justify-between border-b px-4 py-3 lg:pointer-events-none" @click="cartOpen = !cartOpen">
-        <span class="flex items-center gap-2 font-semibold"><ShoppingCartIcon class="size-4" /> Cart <span class="font-normal text-muted-foreground">· {{ cart.itemCount }} items</span></span>
+        <span class="flex items-center gap-2 font-semibold"><ShoppingCartIcon class="size-4" /> Cart <span class="font-normal text-muted-foreground">· {{ cart.itemCount }} {{ cart.itemCount === 1 ? 'item' : 'items' }}</span></span>
         <span class="text-lg font-semibold tabular-nums lg:hidden">{{ money(cart.quote?.totalCents ?? 0) }}</span>
       </button>
       <div v-if="bookingInfo" class="flex items-center gap-2 border-b bg-primary/5 px-4 py-2 text-sm" data-testid="cart-booking">

@@ -133,7 +133,7 @@ const printReceipt = (id: string) => window.open(`/receipt/${id}?print=1`, '_bla
       <span v-if="sale.customerName">Customer: {{ sale.customerName }}</span>
     </div>
     <Table>
-      <TableHeader><TableRow><TableHead>Item</TableHead><TableHead class="text-right">Qty</TableHead><TableHead class="text-right">Discount</TableHead><TableHead class="text-right">Total</TableHead></TableRow></TableHeader>
+      <TableHeader><TableRow><TableHead>Item</TableHead><TableHead class="text-right">Qty</TableHead><TableHead class="text-right">Discount</TableHead><TableHead class="text-right">Net</TableHead></TableRow></TableHeader>
       <TableBody>
         <TableRow v-for="l in sale.lines" :key="l.id">
           <TableCell>
@@ -143,11 +143,13 @@ const printReceipt = (id: string) => window.open(`/receipt/${id}?print=1`, '_bla
           </TableCell>
           <TableCell class="text-right tabular-nums">{{ l.qty }}</TableCell>
           <TableCell class="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{{ l.lineDiscountCents + l.orderDiscountCents ? '−' + money(l.lineDiscountCents + l.orderDiscountCents) : '' }}</TableCell>
-          <TableCell class="text-right tabular-nums">{{ money(l.totalCents) }}</TableCell>
+          <TableCell class="text-right tabular-nums">{{ money(l.netCents) }}</TableCell>
         </TableRow>
       </TableBody>
     </Table>
     <dl class="ml-auto w-full max-w-xs space-y-1 text-sm">
+      <div class="flex justify-between"><dt class="text-muted-foreground">Subtotal</dt><dd class="tabular-nums">{{ money(sale.subtotalCents) }}</dd></div>
+      <div v-if="sale.discountCents" class="flex justify-between"><dt class="text-muted-foreground">Discounts</dt><dd class="tabular-nums text-emerald-600 dark:text-emerald-400">−{{ money(sale.discountCents) }}</dd></div>
       <div class="flex justify-between"><dt class="text-muted-foreground">Tax</dt><dd class="tabular-nums">{{ money(sale.taxCents) }}</dd></div>
       <div class="flex justify-between font-semibold"><dt>Total</dt><dd class="tabular-nums">{{ money(sale.totalCents) }}</dd></div>
       <div v-for="p in sale.payments" :key="p.id" class="flex justify-between text-muted-foreground">

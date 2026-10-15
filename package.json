@@ -17,7 +17,7 @@
     "test": "npm run test -w apps/api && npm run test -w apps/web",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=e2e",
     "screenshots": "playwright test --project=screenshots"
   },
   "devDependencies": {

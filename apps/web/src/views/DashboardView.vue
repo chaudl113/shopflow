@@ -49,10 +49,15 @@ const report = ref<SalesReport | null>(null);
 const previous = ref<SalesReport | null>(null);
 const lowStock = ref<LowStockItem[]>([]);
 const loading = ref(false);
+/** Which range/scope the numbers on screen belong to; a slow older response must not overwrite a newer one. */
+const loaded = ref('');
+let latest = 0;
 
 async function load() {
   const storeId = scopeStore.value?.id;
   const { from, to, prevFrom, prevTo } = range.value;
+  const key = `${preset.value}:${scope.value}`;
+  const seq = ++latest;
   loading.value = true;
   try {
     const [now, before, low] = await Promise.all([
@@ -60,13 +65,15 @@ async function load() {
       api.get<SalesReport>('/reports/sales', { storeId, from: prevFrom.toISODate(), to: prevTo.toISODate() }),
       api.get<{ items: LowStockItem[] }>('/reports/low-stock', { storeId }),
     ]);
+    if (seq !== latest) return;
     report.value = now;
     previous.value = before;
     lowStock.value = low.items;
+    loaded.value = key;
   } catch (e) {
     toast.error(e);
   } finally {
-    loading.value = false;
+    if (seq === latest) loading.value = false;
   }
 }
 watch([preset, scope, () => session.stores.length], load, { immediate: true });
@@ -117,7 +124,7 @@ const showStores = computed(() => !scopeStore.value && (report.value?.byStore.le
 </script>
 
 <template>
-  <div>
+  <div :data-loaded="loaded" :aria-busy="loading">
     <PageHeader title="Dashboard" :subtitle="`${rangeLabel} · net of discounts, before tax · refunds count on the day they happen`">
       <ToggleGroup :model-value="preset" type="single" variant="outline" size="sm" aria-label="Date range" @update:model-value="setPreset">
         <ToggleGroupItem v-for="(label, key) in PRESETS" :key="key" :value="key" :data-testid="`range-${key}`">{{ label }}</ToggleGroupItem>
