@@ -10,7 +10,8 @@ import { DateTime } from 'luxon';
 import { hashPassword } from '../auth.js';
 import { createBooking, setStaffSchedule, updateBooking } from '../booking/booking.js';
 import { applyMovements } from '../inventory/ledger.js';
-import { createReturn, createSale, quoteCart } from '../pos/sales.js';
+import { ADD_ONS, CUSTOMERS, RETAIL_MIX, RETURN_REASONS, mulberry32, ringUp, weighted, type DemoLine } from '../demo/plan.js';
+import { createReturn } from '../pos/sales.js';
 import { closeShift, openShift, shiftSummary } from '../pos/shifts.js';
 import { getTransfers, receiveTransfer, sendTransfer } from '../transfers/transfers.js';
 import { db, pool } from './client.js';
@@ -57,30 +58,6 @@ const catalog: ProductSeed[] = [
 const cents = (d: number) => Math.round(d * 100);
 
 const HISTORY_DAYS = 28;
-const CUSTOMERS = ['Emma Wilson', 'Sofia Martinez', 'Grace Lee', 'Liam Johnson', 'Olivia Brown', 'Ethan Davis', 'Ava Thompson', 'Lucas Garcia', 'Zoe Clark', 'Henry Lewis', 'Chloe Walker', 'Jack Hall', 'Lily Allen', 'Mason Young', 'Nora King', 'Leo Wright', 'Ruby Scott', 'Owen Green', 'Isla Baker', 'Caleb Adams'];
-const RETURN_REASONS = ['Wrong shade', 'Changed mind', 'Damaged packaging', 'Gift duplicate'];
-/** Relative popularity of retail items in walk-in sales. */
-const RETAIL_MIX: [string, number][] = [
-  ['NAIL-CRL', 9], ['NAIL-RBY', 7], ['NAIL-NUD', 10], ['MASK-HYD', 12], ['ARG-SH-250', 8], ['ARG-SH-500', 4], ['SILK-CO', 6],
-  ['CLAY-MT', 5], ['HEAT-SP', 4], ['SER-VITC', 3], ['BR-RND-S', 1], ['BR-RND-M', 2], ['BR-RND-L', 1], ['DRY-ION-BK', 0.6], ['DRY-ION-PL', 0.5],
-];
-const ADD_ONS = ['HEAT-SP', 'ARG-SH-250', 'SER-VITC', 'NAIL-NUD', 'MASK-HYD'] as const;
-
-/** Small seeded PRNG so every reseed produces the same demo history. */
-function mulberry32(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function weighted(rand: () => number, items: [string, number][]) {
-  const total = items.reduce((s, [, w]) => s + w, 0);
-  let r = rand() * total;
-  for (const [k, w] of items) if ((r -= w) <= 0) return k;
-  return items[items.length - 1]![0];
-}
 
 export async function seed() {
   const tables = (await db.execute(sql`select tablename from pg_tables where schemaname = 'public'`)).rows.map((r) => `"${(r as { tablename: string }).tablename}"`);
@@ -280,14 +257,8 @@ export async function seed() {
     await closeShift(shift.id, till.id, expectedCashCents + variance, variance ? pick(['Recounted twice', 'Change given wrong once', 'Coins in the wrong slot']) : '', day.set({ hour: 19 }).toJSDate());
   }
 
-  async function sell(userId: string, storeId: string, lines: { variantId: string; qty: number; staffId?: string }[], customerName: string, bookingId: string | undefined, at: Date) {
-    const { priced } = await quoteCart(db, { storeId, lines });
-    const r = rand();
-    const method = r < 0.62 ? ('card' as const) : r < 0.95 ? ('cash' as const) : ('other' as const);
-    // Cash customers hand over a round amount; the till gives change.
-    const tendered = method === 'cash' ? Math.ceil(priced.totalCents / (rand() < 0.5 ? 500 : 2000)) * (rand() < 0.5 ? 500 : 2000) : priced.totalCents;
-    const res = await createSale(userId, { storeId, lines, payments: [{ method, amountCents: Math.max(tendered, priced.totalCents) }], customerName, bookingId }, { at });
-    return { ...res, method };
+  function sell(userId: string, storeId: string, lines: DemoLine[], customerName: string, bookingId: string | undefined, at: Date) {
+    return ringUp(rand, userId, { storeId, lines, customerName, bookingId }, at);
   }
 
   // Transfers: one completed with a shortfall, one still on the truck to Downtown.

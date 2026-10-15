@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { authUser, hashPassword, requireRole } from '../auth.js';
 import { db } from '../db/client.js';
 import { userStores, users } from '../db/schema.js';
-import { notFound, parse } from '../lib/errors.js';
+import { config } from '../config.js';
+import { isDemoAccount } from '../demo/accounts.js';
+import { AppError, notFound, parse } from '../lib/errors.js';
 import { uuid } from '../lib/zod.js';
 
 export const usersRouter = Router();
@@ -47,6 +49,11 @@ usersRouter.post('/', requireRole('owner'), async (req, res) => {
 usersRouter.patch('/:id', requireRole('owner'), async (req, res) => {
   const id = parse(uuid, req.params.id);
   const body = parse(userBody.partial(), req.body);
+  if (config.demoPublic) {
+    // Visitors share the demo accounts: nobody may change their password, email, role or access, or disable them.
+    const [target] = await db.select({ email: users.email }).from(users).where(eq(users.id, id));
+    if (target && isDemoAccount(target.email)) throw new AppError(403, 'DEMO_LOCKED', 'Demo accounts are shared and cannot be changed.');
+  }
   await db.transaction(async (tx) => {
     const { storeIds, password, ...rest } = body;
     const set = { ...rest, ...(password ? { passwordHash: await hashPassword(password) } : {}) };

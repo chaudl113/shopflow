@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { config } from '../config.js';
 import { z } from 'zod';
 import { availability, createBooking, getBookings, teamSchedule } from '../booking/booking.js';
 import { findVariants } from '../catalog/catalog.js';
@@ -13,7 +14,8 @@ import { uuid } from '../lib/zod.js';
 export const publicRouter = Router();
 
 const readLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false });
-const bookLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+// Per client IP (see TRUST_PROXY); stricter in the public demo.
+const bookLimiter = rateLimit({ windowMs: 10 * 60_000, limit: config.demoPublic ? 10 : 20, standardHeaders: true, legacyHeaders: false });
 
 async function storeBySlug(slug: unknown) {
   const s = parse(z.string().min(1).max(60), slug);

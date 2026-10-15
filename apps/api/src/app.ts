@@ -16,6 +16,7 @@ import { storesRouter } from './routes/stores.js';
 import { transfersRouter } from './routes/transfers.js';
 import { usersRouter } from './routes/users.js';
 import { serveWeb } from './web.js';
+import { appMeta } from './meta.js';
 
 export function createApp() {
   const app = express();
@@ -38,6 +39,13 @@ export function createApp() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+  app.get('/api/meta', async (_req, res, next) => {
+    try {
+      res.json(await appMeta());
+    } catch (e) {
+      next(e);
+    }
   });
   app.use('/api/auth', authRouter);
   app.use('/api/public', publicRouter);
