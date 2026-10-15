@@ -15,11 +15,24 @@ import { shiftsRouter } from './routes/shifts.js';
 import { storesRouter } from './routes/stores.js';
 import { transfersRouter } from './routes/transfers.js';
 import { usersRouter } from './routes/users.js';
+import { serveWeb } from './web.js';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
-  app.use(helmet());
+  app.set('trust proxy', config.trustProxy);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // TLS is terminated in front of the app (Cloudflare); upgrading would break plain-http local runs.
+          upgradeInsecureRequests: null,
+          // Camera barcode scanning draws video frames into blob: and data: images.
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          mediaSrc: ["'self'", 'blob:'],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: config.webOrigin }));
   app.use(express.json({ limit: '200kb' }));
 
@@ -45,6 +58,7 @@ export function createApp() {
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No such endpoint' } });
   });
+  if (config.webDist) serveWeb(app, config.webDist);
   app.use(errorHandler);
   return app;
 }

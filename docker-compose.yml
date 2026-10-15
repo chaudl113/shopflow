@@ -1,6 +1,5 @@
 # `docker compose up --build` runs the whole system:
-#   web  http://localhost:5201  (nginx serving the Vue build, proxying /api)
-#   api  http://localhost:3201
+#   app  http://localhost:5201  (API + built web app in one container)
 #   db   localhost:5442         (Postgres 16; also used by `npm test` and local dev)
 services:
   db:
@@ -20,27 +19,18 @@ services:
       timeout: 3s
       retries: 30
 
-  api:
-    build: { context: ., target: api }
+  app:
+    build: .
     environment:
       DATABASE_URL: postgres://shopflow:shopflow@db:5432/shopflow
       # Demo-only default so the stack starts without setup; set JWT_SECRET in .env for anything real.
       JWT_SECRET: ${JWT_SECRET:-demo-only-not-a-secret-change-me}
-      API_PORT: "3201"
-      WEB_ORIGIN: http://localhost:5201
       SEED_DEMO: if-empty
+      DEMO_PUBLIC: ${DEMO_PUBLIC:-0}
     ports:
-      - "3201:3201"
+      - "5201:3201"
     depends_on:
       db: { condition: service_healthy }
-    restart: unless-stopped
-
-  web:
-    build: { context: ., target: web }
-    ports:
-      - "5201:80"
-    depends_on:
-      - api
     restart: unless-stopped
 
 volumes:

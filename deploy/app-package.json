@@ -1,0 +1,10 @@
+{
+  "name": "shopflow-runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node dist/start.js",
+    "migrate": "node dist/db/migrate.js",
+    "demo:reset": "node dist/demo/reset.js"
+  }
+}
