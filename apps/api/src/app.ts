@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { inventoryRouter } from './routes/inventory.js';
 import { productsRouter } from './routes/products.js';
+import { reportsRouter } from './routes/reports.js';
 import { publicRouter } from './routes/public.js';
 import { salesRouter } from './routes/sales.js';
 import { shiftsRouter } from './routes/shifts.js';
@@ -38,6 +39,7 @@ export function createApp() {
   api.use('/shifts', shiftsRouter);
   api.use('/transfers', transfersRouter);
   api.use('/bookings', bookingsRouter);
+  api.use('/reports', reportsRouter);
   app.use('/api', api);
 
   app.use('/api', (_req, res) => {

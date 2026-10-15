@@ -1,4 +1,4 @@
-import { CalendarDays, Package, Receipt, ShoppingCart, Tag, Truck, Wallet } from '@lucide/vue';
+import { CalendarDays, LayoutDashboard, Package, Receipt, ShoppingCart, Tag, Truck, Wallet } from '@lucide/vue';
 import type { Component } from 'vue';
 import type { Role } from '@/stores/session';
 
@@ -14,6 +14,7 @@ const all: Role[] = ['owner', 'manager', 'cashier', 'staff'];
 const sellers: Role[] = ['owner', 'manager', 'cashier'];
 
 export const navItems: NavItem[] = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['owner', 'manager'], group: 'Insights' },
   { to: '/pos', label: 'Point of sale', icon: ShoppingCart, roles: sellers, group: 'Sell' },
   { to: '/sales', label: 'Sales & returns', icon: Receipt, roles: sellers, group: 'Sell' },
   { to: '/shifts', label: 'Shifts', icon: Wallet, roles: sellers, group: 'Sell' },

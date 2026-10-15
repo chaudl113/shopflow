@@ -23,6 +23,7 @@ export const router = createRouter({
       component: AppShell,
       children: [
         { path: '', redirect: () => homeFor(useSession().user?.role ?? 'staff') },
+        { path: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { roles: ['owner', 'manager'] } },
         { path: 'pos', component: () => import('@/views/PosView.vue'), meta: { roles: sellers } },
         { path: 'sales', component: () => import('@/views/SalesView.vue'), meta: { roles: sellers } },
         { path: 'shifts', component: () => import('@/views/ShiftsView.vue'), meta: { roles: sellers } },
