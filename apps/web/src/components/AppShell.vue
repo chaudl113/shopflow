@@ -1,14 +1,44 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ChevronsUpDownIcon, LogOutIcon, StoreIcon, WarehouseIcon } from '@lucide/vue';
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import DemoBanner from '@/components/DemoBanner.vue';
-import { navItems } from '@/lib/nav';
+import ThemeToggle from '@/components/ThemeToggle.vue';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { navGroups, navItems } from '@/lib/nav';
 import { useSession } from '@/stores/session';
 
 const session = useSession();
 const router = useRouter();
-const open = ref(false);
-const items = computed(() => navItems.filter((n) => session.user && n.roles.includes(session.user.role)));
+const route = useRoute();
+
+const groups = computed(() =>
+  navGroups
+    .map((g) => ({ name: g, items: navItems.filter((n) => n.group === g && session.user && n.roles.includes(session.user.role)) }))
+    .filter((g) => g.items.length),
+);
+const initials = computed(() => (session.user?.name ?? '?').split(' ').map((p) => p[0]).join('').slice(0, 2));
+const storeId = computed({
+  get: () => session.storeId ?? undefined,
+  set: (v) => v && session.selectStore(String(v)),
+});
 
 function logout() {
   session.logout();
@@ -17,57 +47,89 @@ function logout() {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col">
-    <DemoBanner class="print:hidden" />
-    <div class="flex flex-1">
-      <aside
-        class="fixed inset-y-0 left-0 z-30 flex w-60 -translate-x-full flex-col border-r border-slate-200 bg-white transition-transform lg:static lg:translate-x-0 print:hidden"
-        :class="{ 'translate-x-0': open }"
-      >
-        <div class="flex items-center gap-2 px-5 py-4">
-          <img src="/favicon.svg" alt="" class="h-7 w-7" />
-          <span class="text-lg font-semibold tracking-tight">ShopFlow</span>
-        </div>
-        <nav class="flex-1 space-y-0.5 px-3" aria-label="Main">
-          <RouterLink
-            v-for="item in items"
-            :key="item.to"
-            :to="item.to"
-            class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            active-class="!bg-indigo-50 !text-indigo-700"
-            @click="open = false"
-          >
-            <span aria-hidden="true">{{ item.icon }}</span>{{ item.label }}
-          </RouterLink>
-        </nav>
-        <div class="border-t border-slate-200 p-4 text-sm">
-          <div class="font-medium">{{ session.user?.name }}</div>
-          <div class="mb-2 text-xs capitalize text-slate-500">{{ session.user?.role }}</div>
-          <button class="btn-secondary w-full" @click="logout">Sign out</button>
-        </div>
-      </aside>
-      <div v-if="open" class="fixed inset-0 z-20 bg-slate-900/30 lg:hidden" @click="open = false" />
+  <SidebarProvider>
+    <Sidebar collapsible="icon" class="print:hidden">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" as-child>
+              <RouterLink to="/">
+                <img src="/favicon.svg" alt="" class="size-8" />
+                <span class="text-base font-semibold tracking-tight">ShopFlow</span>
+              </RouterLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup v-for="g in groups" :key="g.name">
+          <SidebarGroupLabel>{{ g.name }}</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem v-for="item in g.items" :key="item.to">
+              <SidebarMenuButton as-child :is-active="route.path.startsWith(item.to)" :tooltip="item.label">
+                <RouterLink :to="item.to">
+                  <component :is="item.icon" />
+                  <span>{{ item.label }}</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <SidebarMenuButton size="lg" data-testid="user-menu">
+                  <Avatar class="size-8 rounded-lg">
+                    <AvatarFallback class="rounded-lg">{{ initials }}</AvatarFallback>
+                  </Avatar>
+                  <div class="grid flex-1 text-left text-sm leading-tight">
+                    <span class="truncate font-medium">{{ session.user?.name }}</span>
+                    <span class="truncate text-xs capitalize text-muted-foreground">{{ session.user?.role }}</span>
+                  </div>
+                  <ChevronsUpDownIcon class="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" class="w-56">
+                <DropdownMenuLabel class="font-normal">
+                  <div class="text-sm font-medium">{{ session.user?.name }}</div>
+                  <div class="text-xs text-muted-foreground">{{ session.user?.email }}</div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem @select="logout"><LogOutIcon /> Sign out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
 
-      <div class="flex min-w-0 flex-1 flex-col">
-        <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur print:hidden">
-          <button class="btn-ghost px-2 lg:hidden" aria-label="Open menu" @click="open = true">☰</button>
-          <label class="sr-only" for="store-switch">Store</label>
-          <select
-            id="store-switch"
-            class="input w-auto max-w-[60vw] py-1.5"
-            :value="session.storeId ?? ''"
-            @change="session.selectStore(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="s in session.stores" :key="s.id" :value="s.id">{{ s.name }}{{ s.kind === 'warehouse' ? ' (warehouse)' : '' }}</option>
-          </select>
-          <div class="flex-1" />
-          <slot name="actions" />
-        </header>
-        <main class="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
-          <RouterView v-if="session.storeId" :key="session.storeId" />
-          <div v-else class="card p-8 text-center text-slate-500">You are not assigned to any store yet. Ask the owner to add you.</div>
-        </main>
-      </div>
-    </div>
-  </div>
+    <SidebarInset class="min-w-0">
+      <DemoBanner class="print:hidden" />
+      <header class="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur print:hidden">
+        <SidebarTrigger class="-ml-1" />
+        <Separator orientation="vertical" class="mr-1 data-[orientation=vertical]:h-5" />
+        <Select v-model="storeId">
+          <SelectTrigger class="w-auto min-w-48 max-w-[60vw]" aria-label="Store" data-testid="store-switch">
+            <SelectValue placeholder="Select store" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="s in session.stores" :key="s.id" :value="s.id">
+              <WarehouseIcon v-if="s.kind === 'warehouse'" class="text-muted-foreground" />
+              <StoreIcon v-else class="text-muted-foreground" />
+              {{ s.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <div class="flex-1" />
+        <ThemeToggle />
+      </header>
+      <main class="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
+        <RouterView v-if="session.storeId" :key="session.storeId" />
+        <div v-else class="rounded-xl border p-8 text-center text-muted-foreground">You are not assigned to any store yet. Ask the owner to add you.</div>
+      </main>
+    </SidebarInset>
+  </SidebarProvider>
 </template>

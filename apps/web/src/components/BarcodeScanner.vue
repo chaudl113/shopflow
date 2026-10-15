@@ -59,10 +59,10 @@ onBeforeUnmount(() => {
 
 <template>
   <Modal title="Scan barcode" @close="emit('close')">
-    <div class="relative overflow-hidden rounded-lg bg-slate-900">
+    <div class="relative overflow-hidden rounded-lg bg-black">
       <video ref="video" class="aspect-video w-full object-cover" muted playsinline />
-      <div class="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-rose-500/80" />
+      <div class="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-destructive/80" />
     </div>
-    <p class="mt-3 text-center text-sm text-slate-500">{{ status }}</p>
+    <p class="mt-3 text-center text-sm text-muted-foreground">{{ status }}</p>
   </Modal>
 </template>

@@ -1,29 +1,32 @@
 <script setup lang="ts">
+import { toTypedSchema } from '@vee-validate/zod';
+import { ArrowRightIcon } from '@lucide/vue';
+import { useForm } from 'vee-validate';
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { z } from 'zod';
+import ThemeToggle from '@/components/ThemeToggle.vue';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { homeFor } from '@/lib/nav';
+import { toast } from '@/lib/notify';
 import { useSession } from '@/stores/session';
-import { useToast } from '@/stores/toast';
 
 const session = useSession();
 const router = useRouter();
 const route = useRoute();
-const toast = useToast();
-const email = ref('');
-const password = ref('');
 const busy = ref(false);
 
-const demo = [
-  { email: 'owner@shopflow.demo', label: 'Owner', hint: 'Everything, all stores' },
-  { email: 'manager@shopflow.demo', label: 'Manager', hint: 'Downtown store + warehouse' },
-  { email: 'cashier@shopflow.demo', label: 'Cashier', hint: 'POS, shifts, returns' },
-  { email: 'mia@shopflow.demo', label: 'Stylist', hint: 'Own appointments' },
-];
+const form = useForm({
+  validationSchema: toTypedSchema(z.object({ email: z.string().email('Enter a valid email'), password: z.string().min(1, 'Enter your password') })),
+});
 
-async function submit() {
+const submit = form.handleSubmit(async (values) => {
   busy.value = true;
   try {
-    await session.login(email.value, password.value);
+    await session.login(values.email, values.password);
     const next = typeof route.query.next === 'string' ? route.query.next : homeFor(session.user!.role);
     router.push(next);
   } catch (e) {
@@ -31,45 +34,69 @@ async function submit() {
   } finally {
     busy.value = false;
   }
-}
+});
 
-function useDemo(e: string) {
-  email.value = e;
-  password.value = 'demo1234';
+const demo = [
+  { email: 'owner@shopflow.demo', label: 'Owner', hint: 'Everything, all stores' },
+  { email: 'manager@shopflow.demo', label: 'Manager', hint: 'Downtown + warehouse' },
+  { email: 'cashier@shopflow.demo', label: 'Cashier', hint: 'POS, shifts, returns' },
+  { email: 'mia@shopflow.demo', label: 'Stylist', hint: 'Own appointments' },
+];
+
+function useDemo(email: string) {
+  form.setValues({ email, password: 'demo1234' });
   submit();
 }
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-emerald-50 p-4">
-    <div class="w-full max-w-md">
-      <div class="mb-6 flex items-center justify-center gap-2">
-        <img src="/favicon.svg" alt="" class="h-9 w-9" />
+  <div class="relative flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <ThemeToggle class="absolute top-3 right-3" />
+    <div class="w-full max-w-md space-y-4">
+      <div class="flex items-center justify-center gap-2">
+        <img src="/favicon.svg" alt="" class="size-9" />
         <span class="text-2xl font-semibold tracking-tight">ShopFlow</span>
       </div>
-      <form class="card space-y-4 p-6" @submit.prevent="submit">
-        <h1 class="text-lg font-semibold">Sign in</h1>
-        <div>
-          <label class="label" for="email">Email</label>
-          <input id="email" v-model="email" class="input" type="email" autocomplete="username" required />
-        </div>
-        <div>
-          <label class="label" for="password">Password</label>
-          <input id="password" v-model="password" class="input" type="password" autocomplete="current-password" required />
-        </div>
-        <button class="btn-primary w-full" :disabled="busy">Sign in</button>
-      </form>
-      <div class="card mt-4 p-4">
-        <p class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Demo accounts (password demo1234)</p>
-        <div class="grid grid-cols-2 gap-2">
-          <button v-for="d in demo" :key="d.email" type="button" class="rounded-lg border border-slate-200 p-2.5 text-left hover:border-indigo-300 hover:bg-indigo-50" @click="useDemo(d.email)">
-            <div class="text-sm font-medium">{{ d.label }}</div>
-            <div class="text-xs text-slate-500">{{ d.hint }}</div>
-          </button>
-        </div>
-      </div>
-      <p class="mt-4 text-center text-xs text-slate-500">
-        Customer-facing booking page: <RouterLink to="/book/downtown" class="text-indigo-600 underline">/book/downtown</RouterLink>
+      <Card>
+        <CardHeader>
+          <CardTitle>Sign in</CardTitle>
+          <CardDescription>Multi-store POS, inventory and bookings.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form class="space-y-4" novalidate @submit="submit">
+            <FormField v-slot="{ componentField }" name="email">
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl><Input id="email" type="email" autocomplete="username" v-bind="componentField" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            </FormField>
+            <FormField v-slot="{ componentField }" name="password">
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl><Input id="password" type="password" autocomplete="current-password" v-bind="componentField" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            </FormField>
+            <Button type="submit" class="w-full" :disabled="busy">Sign in</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-sm">Demo accounts</CardTitle>
+          <CardDescription>Password for all: demo1234</CardDescription>
+        </CardHeader>
+        <CardContent class="grid grid-cols-2 gap-2">
+          <Button v-for="d in demo" :key="d.email" variant="outline" class="h-auto flex-col items-start gap-0.5 py-2 text-left" @click="useDemo(d.email)">
+            <span class="text-sm font-medium">{{ d.label }}</span>
+            <span class="text-xs font-normal whitespace-normal text-muted-foreground">{{ d.hint }}</span>
+          </Button>
+        </CardContent>
+      </Card>
+      <p class="text-center text-xs text-muted-foreground">
+        Customer booking page:
+        <RouterLink to="/book/downtown" class="inline-flex items-center gap-0.5 text-primary underline-offset-4 hover:underline">/book/downtown <ArrowRightIcon class="size-3" /></RouterLink>
       </p>
     </div>
   </div>

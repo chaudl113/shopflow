@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { LockOpenIcon } from '@lucide/vue';
 import { ref } from 'vue';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { parseMoney } from '@/lib/format';
 import { useSession } from '@/stores/session';
 import { useShift } from '@/stores/shift';
-import { useToast } from '@/stores/toast';
+import { toast } from '@/lib/notify';
 
 const session = useSession();
 const shift = useShift();
-const toast = useToast();
 const float = ref('150.00');
 const busy = ref(false);
 
@@ -27,12 +31,22 @@ async function open() {
 </script>
 
 <template>
-  <form class="card mx-auto max-w-sm p-6 text-center" @submit.prevent="open">
-    <div class="mb-1 text-3xl">🧾</div>
-    <h2 class="text-lg font-semibold">Open your shift</h2>
-    <p class="mb-4 text-sm text-slate-500">Count the cash in the drawer before the first sale at {{ session.currentStore?.name }}.</p>
-    <label class="label text-left" for="float">Opening float ($)</label>
-    <input id="float" v-model="float" class="input mb-3 text-center text-lg tabular-nums" inputmode="decimal" />
-    <button class="btn-primary w-full" :disabled="busy">Open shift</button>
+  <form class="mx-auto max-w-sm" @submit.prevent="open">
+    <Card class="text-center">
+      <CardHeader>
+        <div class="mx-auto mb-1 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary"><LockOpenIcon class="size-5" /></div>
+        <CardTitle>Open your shift</CardTitle>
+        <CardDescription>Count the cash in the drawer before the first sale at {{ session.currentStore?.name }}.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Field>
+          <FieldLabel for="float">Opening float ($)</FieldLabel>
+          <Input id="float" v-model="float" class="h-11 text-center text-lg tabular-nums" inputmode="decimal" />
+        </Field>
+      </CardContent>
+      <CardFooter>
+        <Button type="submit" class="w-full" :disabled="busy">Open shift</Button>
+      </CardFooter>
+    </Card>
   </form>
 </template>

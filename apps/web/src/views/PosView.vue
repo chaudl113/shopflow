@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { CameraIcon, CircleCheckIcon, MinusIcon, PlusIcon, PrinterIcon, ScanBarcodeIcon, SearchIcon, ShoppingCartIcon, Trash2Icon, WarehouseIcon } from '@lucide/vue';
 import BarcodeScanner from '@/components/BarcodeScanner.vue';
 import Modal from '@/components/Modal.vue';
 import OpenShiftForm from '@/components/OpenShiftForm.vue';
 import PayModal from '@/components/PayModal.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { api, ApiError } from '@/lib/api';
 import { money, parseMoney } from '@/lib/format';
 import type { Method } from '@/lib/tender';
@@ -11,19 +21,17 @@ import type { TeamMember, VariantView } from '@/lib/types';
 import { useCart, type CartLine, type Discount } from '@/stores/cart';
 import { useSession } from '@/stores/session';
 import { useShift } from '@/stores/shift';
-import { useToast } from '@/stores/toast';
+import { toast } from '@/lib/notify';
 
 const session = useSession();
 const shift = useShift();
 const cart = useCart();
-const toast = useToast();
 const storeId = session.storeId!;
 
 const catalog = ref<VariantView[]>([]);
 const staff = ref<TeamMember[]>([]);
 const category = ref('All');
 const search = ref('');
-const scanInput = ref<HTMLInputElement | null>(null);
 const scanning = ref(false);
 const paying = ref(false);
 const busy = ref(false);
@@ -61,7 +69,7 @@ watch(
 );
 
 function focusScan() {
-  nextTick(() => scanInput.value?.focus());
+  nextTick(() => document.getElementById('scan-input')?.focus());
 }
 
 function addVariant(v: VariantView) {
@@ -157,44 +165,58 @@ function newSale() {
   focusScan();
 }
 const lineQuote = (i: number) => cart.quote?.lines[i];
+const staffName = (id: string | null) => staff.value.find((s) => s.id === id)?.name;
+// Toggle groups emit '' when the active item is clicked again; ignore that so a type is always selected.
+function setLineDiscType(v: unknown) {
+  if (v) editDiscountType.value = v as 'percent' | 'amount';
+}
+function setOrderDiscType(v: unknown) {
+  if (v) orderDiscType.value = v as 'percent' | 'amount';
+}
 </script>
 
 <template>
-  <div v-if="isWarehouse" class="card p-8 text-center text-slate-500">Warehouses do not sell. Switch to a store to use the POS.</div>
-  <div v-else-if="!shift.loaded" class="py-20 text-center text-slate-400">Loading…</div>
+  <Empty v-if="isWarehouse" class="border">
+    <EmptyHeader>
+      <EmptyMedia variant="icon"><WarehouseIcon /></EmptyMedia>
+      <EmptyTitle>Warehouses do not sell</EmptyTitle>
+      <EmptyDescription>Switch to a store to use the POS.</EmptyDescription>
+    </EmptyHeader>
+  </Empty>
+  <div v-else-if="!shift.loaded" class="grid grid-cols-2 gap-2.5 sm:grid-cols-4"><Skeleton v-for="n in 8" :key="n" class="h-28 rounded-xl" /></div>
   <OpenShiftForm v-else-if="!shift.current" class="mt-10" />
 
   <div v-else class="grid gap-4 lg:grid-cols-[1fr_380px]">
     <!-- Catalog -->
     <section class="min-w-0">
       <div class="mb-3 flex gap-2">
-        <input
-          ref="scanInput"
-          class="input flex-1 font-mono"
-          placeholder="Scan or type barcode / SKU and press Enter"
-          aria-label="Scan barcode"
-          autocomplete="off"
-          @keydown.enter.prevent="onScanEnter"
-        />
-        <button class="btn-secondary" title="Scan with camera" @click="scanning = true">📷 <span class="hidden sm:inline">Camera</span></button>
+        <InputGroup class="h-10 flex-1">
+          <InputGroupAddon><ScanBarcodeIcon /></InputGroupAddon>
+          <InputGroupInput
+            id="scan-input"
+            class="font-mono"
+            placeholder="Scan or type barcode / SKU and press Enter"
+            aria-label="Scan barcode"
+            autocomplete="off"
+            @keydown.enter.prevent="onScanEnter"
+          />
+        </InputGroup>
+        <Button variant="outline" class="h-10" title="Scan with camera" @click="scanning = true"><CameraIcon /> <span class="hidden sm:inline">Camera</span></Button>
       </div>
-      <div class="mb-3 flex gap-2 overflow-x-auto pb-1">
-        <button
-          v-for="c in categories"
-          :key="c"
-          class="btn shrink-0 border px-3 py-1.5"
-          :class="category === c ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'"
-          @click="category = c"
-        >
-          {{ c }}
-        </button>
-        <input v-model="search" class="input ml-auto w-40 shrink-0 py-1.5" placeholder="Filter…" aria-label="Filter products" />
+      <div class="mb-3 flex items-center gap-2">
+        <div class="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1">
+          <Button v-for="c in categories" :key="c" size="sm" class="shrink-0 rounded-full" :variant="category === c ? 'default' : 'outline'" @click="category = c">{{ c }}</Button>
+        </div>
+        <InputGroup class="w-40 shrink-0">
+          <InputGroupAddon><SearchIcon /></InputGroupAddon>
+          <InputGroupInput v-model="search" placeholder="Filter…" aria-label="Filter products" />
+        </InputGroup>
       </div>
       <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
         <button
           v-for="v in shown"
           :key="v.id"
-          class="card flex h-28 flex-col justify-between p-3 text-left transition hover:border-indigo-300 hover:shadow active:scale-[0.98]"
+          class="flex h-28 flex-col justify-between rounded-xl bg-card p-3 text-left text-card-foreground shadow-xs ring-1 ring-foreground/10 transition hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:scale-[0.98]"
           :class="v.type === 'product' && (v.onHand ?? 0) <= 0 ? 'opacity-50' : ''"
           :data-testid="`tile-${v.sku}`"
           @click="addVariant(v)"
@@ -202,8 +224,8 @@ const lineQuote = (i: number) => cart.quote?.lines[i];
           <div class="line-clamp-2 text-sm font-medium leading-snug">{{ v.label }}</div>
           <div class="flex items-end justify-between">
             <span class="font-semibold tabular-nums">{{ money(v.priceCents) }}</span>
-            <span v-if="v.type === 'service'" class="badge bg-violet-50 text-violet-700">{{ v.durationMin }}m</span>
-            <span v-else class="badge" :class="(v.onHand ?? 0) <= v.reorderLevel ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'">{{ v.onHand }} left</span>
+            <Badge v-if="v.type === 'service'" variant="secondary" class="bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{{ v.durationMin }}m</Badge>
+            <Badge v-else :variant="(v.onHand ?? 0) <= v.reorderLevel ? 'outline' : 'secondary'" :class="(v.onHand ?? 0) <= v.reorderLevel ? 'border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400' : ''">{{ v.onHand }} left</Badge>
           </div>
         </button>
       </div>
@@ -211,66 +233,67 @@ const lineQuote = (i: number) => cart.quote?.lines[i];
 
     <!-- Cart -->
     <aside
-      class="card fixed inset-x-0 bottom-0 z-20 flex max-h-[85vh] flex-col rounded-b-none lg:sticky lg:top-20 lg:z-0 lg:max-h-[calc(100vh-7rem)] lg:rounded-b-xl"
+      class="flex flex-col overflow-hidden rounded-xl bg-card text-card-foreground shadow-xs ring-1 ring-foreground/10 fixed inset-x-0 bottom-0 z-20 max-h-[85vh] rounded-b-none transition-transform lg:sticky lg:top-20 lg:z-0 lg:max-h-[calc(100vh-7rem)] lg:rounded-b-xl"
       :class="cartOpen ? '' : 'max-lg:translate-y-[calc(100%-4.5rem)]'"
       aria-label="Cart"
     >
-      <button class="flex items-center justify-between border-b border-slate-200 px-4 py-3 lg:pointer-events-none" @click="cartOpen = !cartOpen">
-        <span class="font-semibold">Cart <span class="text-slate-400">· {{ cart.itemCount }} items</span></span>
+      <button class="flex items-center justify-between border-b px-4 py-3 lg:pointer-events-none" @click="cartOpen = !cartOpen">
+        <span class="flex items-center gap-2 font-semibold"><ShoppingCartIcon class="size-4" /> Cart <span class="font-normal text-muted-foreground">· {{ cart.itemCount }} items</span></span>
         <span class="text-lg font-semibold tabular-nums lg:hidden">{{ money(cart.quote?.totalCents ?? 0) }}</span>
       </button>
       <div class="flex-1 overflow-y-auto">
-        <p v-if="!cart.lines.length" class="px-4 py-10 text-center text-sm text-slate-400">Scan an item or tap a product to start a sale.</p>
-        <ul class="divide-y divide-slate-100">
+        <p v-if="!cart.lines.length" class="px-4 py-10 text-center text-sm text-muted-foreground">Scan an item or tap a product to start a sale.</p>
+        <ul class="divide-y">
           <li v-for="(l, i) in cart.lines" :key="l.key" class="px-4 py-2.5" data-testid="cart-line">
             <div class="flex items-start justify-between gap-2">
               <button class="min-w-0 text-left" @click="editLine(l)">
                 <div class="truncate text-sm font-medium">{{ l.variant.label }}</div>
-                <div class="text-xs text-slate-500">
+                <div class="text-xs text-muted-foreground">
                   {{ money(l.variant.priceCents) }}
-                  <span v-if="l.discount" class="text-emerald-600">· −{{ l.discount.type === 'percent' ? l.discount.bps / 100 + '%' : money(l.discount.cents) }}</span>
-                  <span v-if="l.variant.type === 'service'" :class="l.staffId ? 'text-violet-600' : 'text-amber-600'">
-                    · {{ staff.find((s) => s.id === l.staffId)?.name ?? 'pick staff' }}
+                  <span v-if="l.discount" class="text-emerald-600 dark:text-emerald-400">· −{{ l.discount.type === 'percent' ? l.discount.bps / 100 + '%' : money(l.discount.cents) }}</span>
+                  <span v-if="l.variant.type === 'service'" :class="l.staffId ? 'text-violet-600 dark:text-violet-400' : 'text-amber-600'">
+                    · {{ staffName(l.staffId) ?? 'pick staff' }}
                   </span>
                 </div>
               </button>
               <div class="text-right text-sm font-medium tabular-nums">{{ money(lineQuote(i)?.netCents ?? l.variant.priceCents * l.qty) }}</div>
             </div>
             <div class="mt-1.5 flex items-center gap-1">
-              <button class="btn-secondary h-7 w-7 p-0" :aria-label="`Decrease ${l.variant.label}`" @click="cart.setQty(l.key, l.qty - 1)">−</button>
+              <Button variant="outline" size="icon-xs" :aria-label="`Decrease ${l.variant.label}`" @click="cart.setQty(l.key, l.qty - 1)"><MinusIcon /></Button>
               <span class="w-8 text-center text-sm tabular-nums">{{ l.qty }}</span>
-              <button class="btn-secondary h-7 w-7 p-0" :aria-label="`Increase ${l.variant.label}`" @click="cart.setQty(l.key, l.qty + 1)">+</button>
-              <button class="btn-ghost ml-auto px-2 py-1 text-xs text-slate-500" @click="editLine(l)">Edit</button>
+              <Button variant="outline" size="icon-xs" :aria-label="`Increase ${l.variant.label}`" @click="cart.setQty(l.key, l.qty + 1)"><PlusIcon /></Button>
+              <Button variant="ghost" size="xs" class="ml-auto text-muted-foreground" @click="editLine(l)">Edit</Button>
             </div>
           </li>
         </ul>
       </div>
-      <div class="border-t border-slate-200 p-4">
-        <input v-model="cart.customerName" class="input mb-3 py-1.5" placeholder="Customer name (optional)" aria-label="Customer name" />
+      <div class="border-t p-4">
+        <Input v-model="cart.customerName" class="mb-3" placeholder="Customer name (optional)" aria-label="Customer name" />
         <dl class="space-y-1 text-sm">
-          <div class="flex justify-between"><dt class="text-slate-500">Subtotal</dt><dd class="tabular-nums">{{ money(cart.quote?.subtotalCents) }}</dd></div>
+          <div class="flex justify-between"><dt class="text-muted-foreground">Subtotal</dt><dd class="tabular-nums">{{ money(cart.quote?.subtotalCents) }}</dd></div>
           <div class="flex justify-between">
             <dt>
-              <button class="text-slate-500 underline decoration-dotted" :disabled="!cart.lines.length" @click="orderDiscOpen = true">Discount</button>
+              <button class="text-muted-foreground underline decoration-dotted underline-offset-2 disabled:opacity-50" :disabled="!cart.lines.length" @click="orderDiscOpen = true">Discount</button>
             </dt>
-            <dd class="tabular-nums text-emerald-600">−{{ money(cart.quote?.discountCents) }}</dd>
+            <dd class="tabular-nums text-emerald-600 dark:text-emerald-400">−{{ money(cart.quote?.discountCents) }}</dd>
           </div>
           <div class="flex justify-between">
-            <dt class="text-slate-500">Tax ({{ ((session.currentStore?.taxRateBps ?? 0) / 100).toFixed(2) }}%)</dt>
+            <dt class="text-muted-foreground">Tax ({{ ((session.currentStore?.taxRateBps ?? 0) / 100).toFixed(2) }}%)</dt>
             <dd class="tabular-nums">{{ money(cart.quote?.taxCents) }}</dd>
           </div>
           <div class="flex justify-between pt-1 text-lg font-semibold"><dt>Total</dt><dd class="tabular-nums" data-testid="cart-total">{{ money(cart.quote?.totalCents) }}</dd></div>
         </dl>
-        <p v-if="cart.quoteError" class="mt-2 text-xs text-rose-600">{{ cart.quoteError }}</p>
+        <p v-if="cart.quoteError" class="mt-2 text-xs text-destructive">{{ cart.quoteError }}</p>
         <div class="mt-3 flex gap-2">
-          <button class="btn-secondary" :disabled="!cart.lines.length" @click="cart.clear()">Clear</button>
-          <button
-            class="btn-primary flex-1 py-3 text-base"
+          <Button variant="outline" size="lg" class="h-12" :disabled="!cart.lines.length" aria-label="Clear cart" @click="cart.clear()"><Trash2Icon /></Button>
+          <Button
+            size="lg"
+            class="h-12 flex-1 text-base"
             :disabled="!cart.quote || !!cart.quoteError || cart.lines.some((l) => l.variant.type === 'service' && !l.staffId)"
             @click="paying = true"
           >
             Charge {{ money(cart.quote?.totalCents) }}
-          </button>
+          </Button>
         </div>
         <p v-if="cart.lines.some((l) => l.variant.type === 'service' && !l.staffId)" class="mt-2 text-xs text-amber-600">Pick who performed each service.</p>
       </div>
@@ -282,59 +305,58 @@ const lineQuote = (i: number) => cart.quote?.lines[i];
 
   <Modal v-if="editing" :title="editing.variant.label" @close="editing = null">
     <div class="space-y-4">
-      <div>
-        <label class="label" for="line-qty">Quantity</label>
-        <input id="line-qty" v-model.number="editing.qty" type="number" min="1" class="input" />
-      </div>
-      <div>
-        <span class="label">Line discount</span>
+      <Field>
+        <FieldLabel for="line-qty">Quantity</FieldLabel>
+        <Input id="line-qty" :model-value="editing.qty" type="number" min="1" @update:model-value="editing.qty = Math.max(1, Number($event) || 1)" />
+      </Field>
+      <Field>
+        <FieldLabel for="line-disc">Line discount</FieldLabel>
         <div class="flex gap-2">
-          <select v-model="editDiscountType" class="input w-24" aria-label="Discount type">
-            <option value="percent">%</option>
-            <option value="amount">$</option>
-          </select>
-          <input v-model="editDiscountValue" class="input" inputmode="decimal" placeholder="0" aria-label="Discount value" />
+          <ToggleGroup type="single" variant="outline" :model-value="editDiscountType" aria-label="Discount type" @update:model-value="setLineDiscType">
+            <ToggleGroupItem value="percent" aria-label="Percent">%</ToggleGroupItem>
+            <ToggleGroupItem value="amount" aria-label="Amount">$</ToggleGroupItem>
+          </ToggleGroup>
+          <Input id="line-disc" v-model="editDiscountValue" inputmode="decimal" placeholder="0" aria-label="Discount value" />
         </div>
-      </div>
-      <div v-if="editing.variant.type === 'service'">
-        <label class="label" for="line-staff">Performed by</label>
-        <select id="line-staff" v-model="editing.staffId" class="input">
-          <option :value="null" disabled>Select staff</option>
-          <option v-for="s in staff" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      </div>
+      </Field>
+      <Field v-if="editing.variant.type === 'service'">
+        <FieldLabel for="line-staff">Performed by</FieldLabel>
+        <NativeSelect id="line-staff" :model-value="editing.staffId ?? ''" @update:model-value="editing.staffId = $event ? String($event) : null">
+          <NativeSelectOption value="" disabled>Select staff</NativeSelectOption>
+          <NativeSelectOption v-for="s in staff" :key="s.id" :value="s.id">{{ s.name }}</NativeSelectOption>
+        </NativeSelect>
+      </Field>
     </div>
     <template #footer>
-      <button class="btn-ghost mr-auto text-rose-600" @click="cart.remove(editing.key); editing = null">Remove</button>
-      <button class="btn-primary" @click="saveLine">Done</button>
+      <Button variant="ghost" class="mr-auto text-destructive" @click="cart.remove(editing.key); editing = null"><Trash2Icon /> Remove</Button>
+      <Button @click="saveLine">Done</Button>
     </template>
   </Modal>
 
-  <Modal v-if="orderDiscOpen" title="Order discount" @close="orderDiscOpen = false">
+  <Modal v-if="orderDiscOpen" title="Order discount" description="Spread across lines proportionally, so partial returns refund the right amount." @close="orderDiscOpen = false">
     <div class="flex gap-2">
-      <select v-model="orderDiscType" class="input w-24" aria-label="Discount type">
-        <option value="percent">%</option>
-        <option value="amount">$</option>
-      </select>
-      <input v-model="orderDiscValue" class="input" inputmode="decimal" placeholder="0" aria-label="Order discount value" />
+      <ToggleGroup type="single" variant="outline" :model-value="orderDiscType" aria-label="Discount type" @update:model-value="setOrderDiscType">
+        <ToggleGroupItem value="percent" aria-label="Percent">%</ToggleGroupItem>
+        <ToggleGroupItem value="amount" aria-label="Amount">$</ToggleGroupItem>
+      </ToggleGroup>
+      <Input v-model="orderDiscValue" inputmode="decimal" placeholder="0" aria-label="Order discount value" />
     </div>
-    <p class="mt-2 text-xs text-slate-500">Spread across lines proportionally, so partial returns refund the right amount.</p>
     <template #footer>
-      <button class="btn-secondary" @click="orderDiscValue = ''; saveOrderDiscount()">Remove</button>
-      <button class="btn-primary" @click="saveOrderDiscount">Apply</button>
+      <Button variant="outline" @click="orderDiscValue = ''; saveOrderDiscount()">Remove</Button>
+      <Button @click="saveOrderDiscount">Apply</Button>
     </template>
   </Modal>
 
   <Modal v-if="completed" title="Sale complete" @close="newSale">
     <div class="text-center">
-      <div class="mb-2 text-4xl">✅</div>
-      <div class="text-sm text-slate-500">Receipt {{ completed.number }}</div>
+      <CircleCheckIcon class="mx-auto mb-2 size-12 text-emerald-500" />
+      <div class="text-sm text-muted-foreground">Receipt {{ completed.number }}</div>
       <div class="text-2xl font-semibold tabular-nums">{{ money(completed.totalCents) }}</div>
-      <div v-if="completed.changeCents" class="mt-3 rounded-lg bg-emerald-50 p-3 text-lg font-semibold text-emerald-700">Change due {{ money(completed.changeCents) }}</div>
+      <div v-if="completed.changeCents" class="mt-3 rounded-lg bg-emerald-50 p-3 text-lg font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Change due {{ money(completed.changeCents) }}</div>
     </div>
     <template #footer>
-      <button class="btn-secondary" @click="printReceipt(completed.id)">Print receipt</button>
-      <button class="btn-primary" @click="newSale">New sale</button>
+      <Button variant="outline" @click="printReceipt(completed.id)"><PrinterIcon /> Print receipt</Button>
+      <Button @click="newSale">New sale</Button>
     </template>
   </Modal>
 </template>

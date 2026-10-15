@@ -1,13 +1,23 @@
 <script setup lang="ts">
+import { ClipboardListIcon, HistoryIcon, PackagePlusIcon, SearchIcon, XIcon } from '@lucide/vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import Modal from '@/components/Modal.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import VariantPicker from '@/components/VariantPicker.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api } from '@/lib/api';
 import { dateTime, money, parseMoney } from '@/lib/format';
+import { toast } from '@/lib/notify';
 import type { VariantView } from '@/lib/types';
 import { useSession } from '@/stores/session';
-import { useToast } from '@/stores/toast';
 
 interface Level {
   variantId: string;
@@ -30,11 +40,10 @@ interface Movement {
   balance: number;
   createdAt: string;
   userName: string | null;
-  refType: string | null;
 }
 
 const session = useSession();
-const toast = useToast();
+const tz = computed(() => session.currentStore?.timezone);
 const levels = ref<Level[]>([]);
 const q = ref('');
 const lowOnly = ref(false);
@@ -61,7 +70,7 @@ watch(q, () => {
 });
 onMounted(load);
 
-// Ledger drawer
+// Ledger
 const ledgerFor = ref<Level | null>(null);
 const movements = ref<Movement[]>([]);
 async function openLedger(l: Level) {
@@ -81,7 +90,7 @@ const kindLabel: Record<string, string> = {
 // Receive / count
 type Mode = 'receive' | 'count';
 const mode = ref<Mode | null>(null);
-const lines = ref<{ variant: VariantView | Level; qty: number; cost: string }[]>([]);
+const lines = ref<{ id: string; label: string; qty: string; cost: string }[]>([]);
 const note = ref('');
 const busy = ref(false);
 function openMode(m: Mode) {
@@ -90,10 +99,9 @@ function openMode(m: Mode) {
   note.value = m === 'count' ? 'Stock count' : '';
 }
 function addLine(v: VariantView) {
-  if (lines.value.some((l) => ('id' in l.variant ? l.variant.id : l.variant.variantId) === v.id)) return;
-  lines.value.push({ variant: v, qty: mode.value === 'count' ? (v.onHand ?? 0) : 1, cost: (v.costCents / 100).toFixed(2) });
+  if (lines.value.some((l) => l.id === v.id)) return;
+  lines.value.push({ id: v.id, label: v.label, qty: String(mode.value === 'count' ? (v.onHand ?? 0) : 1), cost: (v.costCents / 100).toFixed(2) });
 }
-const idOf = (v: VariantView | Level) => ('id' in v ? v.id : v.variantId);
 async function submit() {
   busy.value = true;
   try {
@@ -101,14 +109,14 @@ async function submit() {
       await api.post('/inventory/receive', {
         storeId: session.storeId,
         note: note.value,
-        lines: lines.value.map((l) => ({ variantId: idOf(l.variant), qty: Number(l.qty), unitCostCents: parseMoney(l.cost) ?? undefined })),
+        lines: lines.value.map((l) => ({ variantId: l.id, qty: Number(l.qty), unitCostCents: parseMoney(l.cost) ?? undefined })),
       });
       toast.success('Stock received');
     } else {
       const res = await api.post<{ adjustments: { delta: number }[] }>('/inventory/stocktake', {
         storeId: session.storeId,
         note: note.value,
-        lines: lines.value.map((l) => ({ variantId: idOf(l.variant), countedQty: Number(l.qty) })),
+        lines: lines.value.map((l) => ({ variantId: l.id, countedQty: Number(l.qty) })),
       });
       const changed = res.adjustments.filter((a) => a.delta !== 0).length;
       toast.success(changed ? `Count saved, ${changed} item(s) adjusted` : 'Count matches, nothing to adjust');
@@ -126,100 +134,109 @@ async function submit() {
 <template>
   <PageHeader title="Inventory" :subtitle="`Stock at ${session.currentStore?.name} · value at cost ${money(stockValue)}`">
     <template v-if="canManage">
-      <button class="btn-secondary" @click="openMode('count')">Stock count</button>
-      <button class="btn-primary" @click="openMode('receive')">Receive stock</button>
+      <Button variant="outline" @click="openMode('count')"><ClipboardListIcon /> Stock count</Button>
+      <Button @click="openMode('receive')"><PackagePlusIcon /> Receive stock</Button>
     </template>
   </PageHeader>
 
-  <div class="mb-4 flex flex-wrap items-center gap-3">
-    <input v-model="q" class="input max-w-xs" placeholder="Search…" aria-label="Search stock" />
-    <label class="flex items-center gap-2 text-sm text-slate-600"><input v-model="lowOnly" type="checkbox" class="rounded" /> Low stock only</label>
+  <div class="mb-4 flex flex-wrap items-center gap-4">
+    <InputGroup class="max-w-xs">
+      <InputGroupAddon><SearchIcon /></InputGroupAddon>
+      <InputGroupInput v-model="q" placeholder="Search…" aria-label="Search stock" />
+    </InputGroup>
+    <div class="flex items-center gap-2">
+      <Switch id="low-only" v-model="lowOnly" />
+      <Label for="low-only">Low stock only</Label>
+    </div>
   </div>
 
-  <div class="card overflow-x-auto">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>SKU</th>
-          <th class="text-right">On hand</th>
-          <th class="text-right">In transit</th>
-          <th class="text-right">Reorder at</th>
-          <th class="text-right">Price</th>
-          <th />
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="l in shown" :key="l.variantId" class="hover:bg-slate-50">
-          <td>
+  <Card class="py-0">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Item</TableHead>
+          <TableHead>SKU</TableHead>
+          <TableHead class="text-right">On hand</TableHead>
+          <TableHead class="text-right">In transit</TableHead>
+          <TableHead class="text-right">Reorder at</TableHead>
+          <TableHead class="text-right">Price</TableHead>
+          <TableHead />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow v-for="l in shown" :key="l.variantId">
+          <TableCell>
             <div class="font-medium">{{ l.label }}</div>
-            <div class="text-xs text-slate-500">{{ l.category }}</div>
-          </td>
-          <td class="font-mono text-xs">{{ l.sku }}</td>
-          <td class="text-right tabular-nums">
-            <span :class="l.onHand < 0 ? 'text-rose-700' : l.low ? 'font-semibold text-amber-600' : ''">{{ l.onHand }}</span>
-            <span v-if="l.low" class="badge ml-2 bg-amber-50 text-amber-700">low</span>
-          </td>
-          <td class="text-right text-xs tabular-nums">
-            <span v-if="l.inbound" class="text-sky-700">+{{ l.inbound }} in</span>
-            <span v-if="l.outbound" class="ml-1 text-slate-500">−{{ l.outbound }} out</span>
-          </td>
-          <td class="text-right tabular-nums text-slate-500">{{ l.reorderLevel }}</td>
-          <td class="text-right tabular-nums">{{ money(l.priceCents) }}</td>
-          <td class="text-right"><button class="btn-ghost px-2 py-1 text-indigo-600" @click="openLedger(l)">History</button></td>
-        </tr>
-        <tr v-if="!loading && shown.length === 0">
-          <td colspan="7" class="py-10 text-center text-slate-500">Nothing here.</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+            <div class="text-xs text-muted-foreground">{{ l.category }}</div>
+          </TableCell>
+          <TableCell class="font-mono text-xs">{{ l.sku }}</TableCell>
+          <TableCell class="text-right tabular-nums">
+            <span :class="l.onHand < 0 ? 'text-destructive' : l.low ? 'font-semibold text-amber-600 dark:text-amber-400' : ''">{{ l.onHand }}</span>
+            <Badge v-if="l.low" variant="outline" class="ml-2 border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400">low</Badge>
+          </TableCell>
+          <TableCell class="text-right text-xs tabular-nums">
+            <span v-if="l.inbound" class="text-sky-700 dark:text-sky-400">+{{ l.inbound }} in</span>
+            <span v-if="l.outbound" class="ml-1 text-muted-foreground">−{{ l.outbound }} out</span>
+          </TableCell>
+          <TableCell class="text-right tabular-nums text-muted-foreground">{{ l.reorderLevel }}</TableCell>
+          <TableCell class="text-right tabular-nums">{{ money(l.priceCents) }}</TableCell>
+          <TableCell class="text-right"><Button variant="ghost" size="sm" @click="openLedger(l)"><HistoryIcon /> History</Button></TableCell>
+        </TableRow>
+        <TableEmpty v-if="!loading && shown.length === 0" :colspan="7">Nothing here.</TableEmpty>
+      </TableBody>
+    </Table>
+  </Card>
 
-  <Modal v-if="ledgerFor" :title="`Stock ledger · ${ledgerFor.label}`" wide @close="ledgerFor = null">
-    <p class="mb-3 text-sm text-slate-500">Every change is an immutable movement. On hand = sum of movements.</p>
-    <table class="table">
-      <thead>
-        <tr><th>When</th><th>Movement</th><th>By</th><th class="text-right">Qty</th><th class="text-right">Balance</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="m in movements" :key="m.id">
-          <td class="whitespace-nowrap text-xs text-slate-500">{{ dateTime(m.createdAt, session.currentStore?.timezone) }}</td>
-          <td>{{ kindLabel[m.kind] ?? m.kind }}<span v-if="m.note" class="block text-xs text-slate-400">{{ m.note }}</span></td>
-          <td class="text-xs">{{ m.userName ?? '—' }}</td>
-          <td class="text-right font-medium tabular-nums" :class="m.qty < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ m.qty > 0 ? '+' : '' }}{{ m.qty }}</td>
-          <td class="text-right tabular-nums">{{ m.balance }}</td>
-        </tr>
-      </tbody>
-    </table>
+  <Modal v-if="ledgerFor" :title="`Stock ledger · ${ledgerFor.label}`" description="Every change is an immutable movement. On hand = sum of movements." wide @close="ledgerFor = null">
+    <Table>
+      <TableHeader>
+        <TableRow><TableHead>When</TableHead><TableHead>Movement</TableHead><TableHead>By</TableHead><TableHead class="text-right">Qty</TableHead><TableHead class="text-right">Balance</TableHead></TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow v-for="m in movements" :key="m.id">
+          <TableCell class="whitespace-nowrap text-xs text-muted-foreground">{{ dateTime(m.createdAt, tz) }}</TableCell>
+          <TableCell>{{ kindLabel[m.kind] ?? m.kind }}<span v-if="m.note" class="block text-xs text-muted-foreground">{{ m.note }}</span></TableCell>
+          <TableCell class="text-xs">{{ m.userName ?? '—' }}</TableCell>
+          <TableCell class="text-right font-medium tabular-nums" :class="m.qty < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'">{{ m.qty > 0 ? '+' : '' }}{{ m.qty }}</TableCell>
+          <TableCell class="text-right tabular-nums">{{ m.balance }}</TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
   </Modal>
 
-  <Modal v-if="mode" :title="mode === 'receive' ? 'Receive stock' : 'Stock count'" wide @close="mode = null">
-    <p class="mb-3 text-sm text-slate-500">
-      {{ mode === 'receive' ? 'Adds stock from a supplier delivery.' : 'Enter what is physically on the shelf. Only the difference is posted as an adjustment.' }}
-    </p>
+  <Modal
+    v-if="mode"
+    :title="mode === 'receive' ? 'Receive stock' : 'Stock count'"
+    :description="mode === 'receive' ? 'Adds stock from a supplier delivery.' : 'Enter what is physically on the shelf. Only the difference is posted as an adjustment.'"
+    wide
+    @close="mode = null"
+  >
     <VariantPicker type="product" @pick="addLine" />
-    <table v-if="lines.length" class="table mt-3">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th class="w-28">{{ mode === 'receive' ? 'Qty' : 'Counted' }}</th>
-          <th v-if="mode === 'receive'" class="w-28">Unit cost $</th>
-          <th />
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(l, i) in lines" :key="i">
-          <td>{{ l.variant.label }}</td>
-          <td><input v-model.number="l.qty" class="input" type="number" :min="mode === 'receive' ? 1 : 0" :aria-label="`Quantity for ${l.variant.label}`" /></td>
-          <td v-if="mode === 'receive'"><input v-model="l.cost" class="input" inputmode="decimal" /></td>
-          <td class="text-right"><button class="btn-ghost px-2 text-rose-600" @click="lines.splice(i, 1)">✕</button></td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="mt-3"><label class="label" for="inv-note">Note</label><input id="inv-note" v-model="note" class="input" placeholder="Supplier invoice #, reason…" /></div>
+    <Table v-if="lines.length" class="mt-3">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Item</TableHead>
+          <TableHead class="w-28">{{ mode === 'receive' ? 'Qty' : 'Counted' }}</TableHead>
+          <TableHead v-if="mode === 'receive'" class="w-28">Unit cost $</TableHead>
+          <TableHead />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow v-for="(l, i) in lines" :key="l.id">
+          <TableCell>{{ l.label }}</TableCell>
+          <TableCell><Input v-model="l.qty" type="number" :min="mode === 'receive' ? 1 : 0" :aria-label="`Quantity for ${l.label}`" /></TableCell>
+          <TableCell v-if="mode === 'receive'"><Input v-model="l.cost" inputmode="decimal" :aria-label="`Unit cost for ${l.label}`" /></TableCell>
+          <TableCell class="text-right"><Button variant="ghost" size="icon-sm" aria-label="Remove line" @click="lines.splice(i, 1)"><XIcon /></Button></TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+    <Field class="mt-4">
+      <FieldLabel for="inv-note">Note</FieldLabel>
+      <Input id="inv-note" v-model="note" placeholder="Supplier invoice #, reason…" />
+    </Field>
     <template #footer>
-      <button class="btn-secondary" @click="mode = null">Cancel</button>
-      <button class="btn-primary" :disabled="busy || !lines.length" @click="submit">{{ mode === 'receive' ? 'Receive' : 'Save count' }}</button>
+      <Button variant="outline" @click="mode = null">Cancel</Button>
+      <Button :disabled="busy || !lines.length" @click="submit">{{ mode === 'receive' ? 'Receive' : 'Save count' }}</Button>
     </template>
   </Modal>
 </template>

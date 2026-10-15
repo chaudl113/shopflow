@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
+import { PrinterIcon } from '@lucide/vue';
 import { useRoute } from 'vue-router';
+import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { dateTime, money } from '@/lib/format';
 import type { SaleDetail } from '@/lib/types';
@@ -27,8 +29,8 @@ const method = (m: string) => ({ cash: 'Cash', card: 'Card', other: 'Other' })[m
 </script>
 
 <template>
-  <div class="receipt-page min-h-screen bg-slate-200 py-6 print:bg-white print:py-0">
-    <div v-if="error" class="text-center text-rose-600">{{ error }}</div>
+  <div class="receipt-page min-h-screen bg-muted py-6 print:bg-white print:py-0">
+    <div v-if="error" class="text-center text-destructive">{{ error }}</div>
     <article v-else-if="sale" class="receipt mx-auto bg-white px-3 py-4 font-mono text-[11px] leading-snug text-black shadow print:shadow-none" data-testid="receipt">
       <header class="text-center">
         <div class="text-sm font-bold uppercase">{{ sale.store.name }}</div>
@@ -73,7 +75,7 @@ const method = (m: string) => ({ cash: 'Cash', card: 'Card', other: 'Other' })[m
       </footer>
     </article>
     <div class="mt-4 text-center print:hidden">
-      <button class="btn-primary" @click="print">Print</button>
+      <Button @click="print"><PrinterIcon /> Print</Button>
     </div>
   </div>
 </template>

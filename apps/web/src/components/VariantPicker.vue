@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { SearchIcon } from '@lucide/vue';
 import { ref, watch } from 'vue';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { api } from '@/lib/api';
 import { money } from '@/lib/format';
 import type { VariantView } from '@/lib/types';
@@ -15,12 +17,12 @@ const open = ref(false);
 let t: ReturnType<typeof setTimeout>;
 watch(q, (v) => {
   clearTimeout(t);
-  if (!v.trim()) {
+  if (!String(v).trim()) {
     results.value = [];
     return;
   }
   t = setTimeout(async () => {
-    results.value = (await api.get<{ variants: VariantView[] }>('/products/variants', { storeId: props.storeId ?? session.storeId, q: v, type: props.type })).variants.slice(0, 8);
+    results.value = (await api.get<{ variants: VariantView[] }>('/products/variants', { storeId: props.storeId ?? session.storeId, q: String(v), type: props.type })).variants.slice(0, 8);
     open.value = true;
   }, 150);
 });
@@ -35,12 +37,15 @@ function pick(v: VariantView) {
 
 <template>
   <div class="relative">
-    <input v-model="q" class="input" :placeholder="placeholder ?? 'Search item to add…'" aria-label="Search item" @focus="open = true" @keydown.enter.prevent="results[0] && pick(results[0])" />
-    <ul v-if="open && results.length" class="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+    <InputGroup>
+      <InputGroupAddon><SearchIcon /></InputGroupAddon>
+      <InputGroupInput v-model="q" :placeholder="placeholder ?? 'Search item to add…'" aria-label="Search item" @focus="open = true" @keydown.enter.prevent="results[0] && pick(results[0])" />
+    </InputGroup>
+    <ul v-if="open && results.length" class="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
       <li v-for="v in results" :key="v.id">
-        <button type="button" class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-indigo-50" @click="pick(v)">
-          <span>{{ v.label }} <span class="font-mono text-xs text-slate-400">{{ v.sku }}</span></span>
-          <span class="text-xs text-slate-500">{{ v.onHand === null ? money(v.priceCents) : `${v.onHand} on hand` }}</span>
+        <button type="button" class="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground" @click="pick(v)">
+          <span>{{ v.label }} <span class="font-mono text-xs text-muted-foreground">{{ v.sku }}</span></span>
+          <span class="text-xs text-muted-foreground">{{ v.onHand === null ? money(v.priceCents) : `${v.onHand} on hand` }}</span>
         </button>
       </li>
     </ul>
