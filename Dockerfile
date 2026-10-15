@@ -25,7 +25,8 @@ RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.
 FROM node:22-alpine
 ENV NODE_ENV=production \
     API_PORT=3201 \
-    WEB_DIST=/app/web
+    WEB_DIST=/app/web \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
 WORKDIR /app
 # Yarn and corepack are never used at runtime; npm stays for `npm run demo:reset`.
 RUN rm -rf /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/lib/node_modules/corepack /usr/local/bin/corepack

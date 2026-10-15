@@ -1,0 +1,41 @@
+# ShopFlow public demo behind Cloudflare → Nginx Proxy Manager → this container.
+#
+#   docker buildx build --platform linux/amd64 -t shopflow:latest .     (from the repo root)
+#   cp deploy/.env.vps.example deploy/.env    # then fill in DATABASE_URL and JWT_SECRET
+#   docker compose -f deploy/compose.vps.yml up -d
+#
+# No Postgres here and no host ports: Postgres is shared on the `portfolio` network, and NPM
+# proxies https://shopflow.longtn.shop to http://shopflow:3201 on the same network.
+#
+# Nightly reset (guest data wiped, 4 weeks of history reseeded up to today), e.g. in crontab:
+#   CRON_TZ=America/New_York
+#   30 3 * * *  docker exec shopflow node dist/demo/reset.js >> /var/log/shopflow-reset.log 2>&1
+name: shopflow
+
+services:
+  shopflow:
+    image: shopflow:latest
+    build:
+      context: ..
+      platforms: [linux/amd64]
+    container_name: shopflow
+    environment:
+      # Its own database on the shared server (see README "Deploying"). Never a database another app uses.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in deploy/.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env (openssl rand -hex 32)}
+      DEMO_PUBLIC: "1"
+      # Cloudflare edge + Nginx Proxy Manager: two proxies in front, so rate limits see the visitor's IP.
+      TRUST_PROXY: "2"
+      SEED_DEMO: if-empty
+      WEB_ORIGIN: https://shopflow.longtn.shop
+    expose:
+      - "3201"
+    networks: [portfolio]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+networks:
+  portfolio:
+    external: true

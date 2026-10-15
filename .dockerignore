@@ -8,3 +8,4 @@ docs
 e2e
 deploy/*.yml
 *.md
+deploy/.env*

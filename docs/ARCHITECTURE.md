@@ -6,7 +6,7 @@
                  └───────────────┬───────────────────────────────────┬───────────┘
                                  │ /api/* (JWT)                      │ /api/public/* (no auth, rate limited)
                  ┌───────────────▼───────────────────────────────────▼───────────┐
-   nginx (web) ──►  Express 5 API                                                 │
+                 │  Express 5 API (also serves the built web app)                 │
                  │   routes/*        thin: auth, store scoping, zod validation    │
                  │   ─────────────────────────────────────────────────────────    │
                  │   pos/sales       quote · sell · return     ┐                  │
@@ -72,16 +72,35 @@
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| API integration (Vitest + supertest, real Postgres) | Money, stock, shifts, transfers, bookings, reports, permissions. Races are fired as real parallel requests. | `apps/api/test/*.test.ts` |
+| API integration (Vitest + supertest, real Postgres) | Money, stock, shifts, transfers, bookings, reports, permissions, demo mode and the simulator. Races are fired as real parallel requests. | `apps/api/test/*.test.ts` |
 | Pure unit | Price, discount, tax and refund rounding | `apps/api/src/lib/money.test.ts` |
 | Web unit | Cart behaviour, tender and change, formatting | `apps/web/src/**/__tests__` |
-| End to end (Playwright) | Online booking → POS checkout → stock −1 → dashboard +subtotal | `e2e/flow.spec.ts` |
+| End to end (Playwright) | Online booking → POS checkout → stock −1 → dashboard +subtotal; landing → one click into each role | `e2e/flow.spec.ts`, `e2e/landing.spec.ts` |
 
 ## Deployment shape
 
-`docker compose up --build` builds one multi-stage `Dockerfile` with two targets:
+One multi-stage `Dockerfile` builds one image (`node:22-alpine`, about 66 MB compressed):
 
-- **`api`:** Node runtime with production dependencies. Its entry point, `src/start.ts`, migrates the database, loads demo data into an empty database, then serves.
-- **`web`:** nginx with the Vite build. It serves the SPA and proxies `/api`.
+- **Build stage.** Compiles the API with `tsc` and the web app with Vite.
+- **Dependency stage.** Installs only the API's production dependencies. The workspace list is cut down to the API first, so the web toolchain never reaches the image.
+- **Runtime stage.** Holds the compiled API, its migrations and the static web build, and runs as the `node` user.
+  - Express serves `/api/*`, then static assets: hashed files are cached as immutable, and every other path falls back to `index.html` with `no-cache`.
+  - Its entry point, `src/start.ts`, applies migrations, loads demo data into an empty database, then serves.
 
-Postgres runs in its own container with a named volume.
+The local `docker-compose.yml` adds a Postgres container with a named volume. `deploy/compose.vps.yml` runs the same image behind a shared Postgres and reverse proxy, with no host ports.
+
+## Public demo mode
+
+`DEMO_PUBLIC=1` (see the README) adds four things without touching the domain modules:
+
+- one-click sign-in;
+- a lock on the shared demo accounts;
+- tighter rate limits;
+- a simulator in `src/demo/` that keeps "today" alive.
+
+The simulator works like a robot cashier:
+
+- It replays a deterministic plan of walk-ins per store and local day through `createSale`, and checks out finished appointments through the same path as the POS.
+- Walk-ins carry a client reference derived from the store, the day and the walk-in's index, so the sale idempotency added for double-clicks also makes every run safe to repeat.
+- The nightly `demo:reset` and the 5-minute run share a session advisory lock.
+- The reset truncates only the tables defined in `schema.ts`, so it is safe on a shared database server.

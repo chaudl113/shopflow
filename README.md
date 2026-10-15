@@ -4,6 +4,8 @@ Point of sale, multi-store inventory and appointment booking for a salon and ret
 
 > **Demo data.** Every store, person, product and sale in this app is fictional and comes from `apps/api/src/db/seed.ts`.
 
+![Landing page](docs/screenshots/desktop-landing.png)
+
 ![Dashboard](docs/screenshots/desktop-dashboard.png)
 
 | POS checkout of a booking | Week calendar | Online booking (phone) |
@@ -18,12 +20,12 @@ More screens are in [`docs/screenshots`](docs/screenshots), at 1440 px desktop a
 docker compose up --build
 ```
 
-- Web: http://localhost:5201
+- App (web and API in one container): http://localhost:5201
 - Public booking page: http://localhost:5201/book/downtown
-- API: http://localhost:3201/api/health
+- API health: http://localhost:5201/api/health
 - Postgres: `localhost:5442`
 
-The first start runs migrations and loads the demo dataset into the empty database. Later restarts keep your data.
+The first start runs migrations and loads the demo dataset into the empty database. Later restarts keep your data. `DEMO_PUBLIC=1 docker compose up --build` starts it the way the hosted demo runs (see below).
 
 | Sign in as | Email | Lands on |
 | --- | --- | --- |
@@ -33,7 +35,7 @@ The first start runs migrations and loads the demo dataset into the empty databa
 | Cashier (Uptown) | `sam@shopflow.demo` | POS |
 | Stylist | `mia@shopflow.demo` | Bookings |
 
-The password for every account is `demo1234`.
+The password for every account is `demo1234`. The landing page and the sign-in page also have one-click buttons for each role.
 
 ### Local development
 
@@ -51,11 +53,53 @@ npm run dev:web      # http://localhost:5201 (proxies /api)
 ```bash
 npm test             # API integration tests on a real Postgres + web unit tests (starts the db if needed)
 npm run typecheck
-npm run e2e          # Playwright: online booking → POS → stock → dashboard (reseeds the dev database)
-npm run screenshots  # regenerates docs/screenshots
+npm run e2e          # Playwright: landing → one-click sign-in; online booking → POS → stock → dashboard (reseeds the dev database)
+npm run screenshots  # regenerates docs/screenshots and the landing page images
 ```
 
 The API tests run against a separate `shopflow_test` database. They make real concurrent requests: two tills race for the last unit, five browsers race for one slot, two clerks receive the same transfer at the same moment.
+
+## Public demo mode
+
+`DEMO_PUBLIC=1` turns a deployment into a shared, public demo:
+
+- **One-click sign-in.** "Try as Owner" and "Try as Cashier" sign in without a password (`POST /api/auth/demo`). The public booking page is linked from the landing and sign-in pages.
+- **Locked demo accounts.** The `@shopflow.demo` accounts cannot have their password, email, role or active flag changed (403 `DEMO_LOCKED`). Visitors can still create and edit other users.
+- **Tighter per-IP rate limits.** Sign-in is limited to 10 a minute and one-click sign-in to 20 a minute. Public booking is limited to 10 every 10 minutes. Set `TRUST_PROXY` to the number of proxies in front of the app so the limits see the visitor's address.
+- **A "today" that is never empty.**
+  - The stores keep the New York time zone.
+  - Every 5 minutes the app replays a fixed plan of walk-in sales up to the current time. It also checks out appointments that ended 10 minutes ago, and a few become no-shows. All of this goes through the normal POS and booking code.
+  - Trading is busiest from 9 am to 8 pm, with a thin trickle overnight, so the first sale lands a few minutes after midnight.
+  - Each step is idempotent, and a Postgres advisory lock keeps two runs from overlapping.
+- **Nightly reset.** `npm run demo:reset` wipes everything visitors created and reloads four weeks of history up to today. It then fills today up to now.
+
+## Deploying
+
+The image is a single container: Express serves the API and the built web app. It is a multi-stage `node:22-alpine` build, about 66 MB compressed and 200 MB on disk.
+
+```bash
+docker buildx build --platform linux/amd64 -t shopflow:latest .
+```
+
+On start the container applies migrations and, with `SEED_DEMO=if-empty`, loads the demo data into an empty database. Both steps are safe to repeat on every start.
+
+| Variable | Required | Example | Notes |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | yes | `postgres://shopflow:…@postgres:5432/shopflow` | ShopFlow needs its **own database**. Its role must own it, because migrations create the `btree_gist` extension and a `drizzle` schema. |
+| `JWT_SECRET` | yes | `openssl rand -hex 32` | The app refuses to start without it in production. |
+| `DEMO_PUBLIC` | no | `1` | Public demo mode (above). |
+| `TRUST_PROXY` | no | `2` | Number of proxies in front: `2` behind Cloudflare and a reverse proxy. Default `1`. |
+| `SEED_DEMO` | no | `if-empty` | Loads demo data into an empty database. |
+| `WEB_ORIGIN` | no | `https://shopflow.example.com` | CORS origin. The web app is same-origin, so this only matters for other clients. |
+| `API_PORT` | no | `3201` | The port the container listens on. |
+
+`deploy/compose.vps.yml` is a sample for a server that already runs a shared Postgres and a reverse proxy:
+
+- It has no database of its own and publishes no host ports.
+- It joins the external `portfolio` network, where the proxy reaches `http://shopflow:3201`.
+- It includes the nightly reset cron line.
+
+The reset only ever truncates ShopFlow's own tables.
 
 ## Features
 
@@ -120,7 +164,7 @@ The API tests run against a separate `shopflow_test` database. They make real co
 
 ## Stack and why
 
-- **API:** Node 24, TypeScript, **Express 5**, Drizzle ORM, PostgreSQL 16, zod.
+- **API:** Node 22+, TypeScript, **Express 5**, Drizzle ORM, PostgreSQL 16, zod.
 - **Web:** Vue 3, Vite, Pinia, Tailwind CSS v4, **shadcn-vue** (reka-ui) with CSS-variable theming and dark mode, lucide icons, and unovis charts through the shadcn-vue chart component.
 - **Tests:** Vitest with supertest against a real Postgres, Vue unit tests, and Playwright.
 - **Express over NestJS.** The interesting parts of this domain are transactions and locking, not dependency injection. A small Express app with plain domain modules (`inventory/`, `pos/`, `booking/`, `transfers/`, `reports/`) keeps every SQL statement and lock visible in one place. Routes are thin and validate with zod.

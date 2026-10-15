@@ -5,7 +5,8 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, sql } from 'drizzle-orm';
+import { eq, getTableName, is, sql } from 'drizzle-orm';
+import { PgTable } from 'drizzle-orm/pg-core';
 import { DateTime } from 'luxon';
 import { hashPassword } from '../auth.js';
 import { createBooking, setStaffSchedule, updateBooking } from '../booking/booking.js';
@@ -16,6 +17,7 @@ import { closeShift, openShift, shiftSummary } from '../pos/shifts.js';
 import { getTransfers, receiveTransfer, sendTransfer } from '../transfers/transfers.js';
 import { db, pool } from './client.js';
 import { runMigrations } from './migrate.js';
+import * as schema from './schema.js';
 import { products, saleLines, storePrices, stores, userStores, users, variants } from './schema.js';
 
 export const DEMO_PASSWORD = 'demo1234';
@@ -59,9 +61,13 @@ const cents = (d: number) => Math.round(d * 100);
 
 const HISTORY_DAYS = 28;
 
+/** ShopFlow's own tables. The database may be shared, so the wipe never touches anything else. */
+const OWN_TABLES = Object.values(schema)
+  .filter((t) => is(t, PgTable))
+  .map((t) => `"${getTableName(t)}"`);
+
 export async function seed() {
-  const tables = (await db.execute(sql`select tablename from pg_tables where schemaname = 'public'`)).rows.map((r) => `"${(r as { tablename: string }).tablename}"`);
-  if (tables.length) await db.execute(sql.raw(`truncate ${tables.join(', ')} restart identity cascade`));
+  await db.execute(sql.raw(`truncate ${OWN_TABLES.join(', ')} restart identity`));
 
   const [downtown, uptown, warehouse] = await db
     .insert(stores)
