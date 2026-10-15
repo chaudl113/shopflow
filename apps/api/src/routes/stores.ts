@@ -20,6 +20,12 @@ storesRouter.get('/', async (req, res) => {
   res.json({ stores: rows });
 });
 
+/** Minimal list of every location (transfer destinations). */
+storesRouter.get('/directory', async (_req, res) => {
+  const rows = await db.select({ id: stores.id, name: stores.name, code: stores.code, kind: stores.kind }).from(stores).orderBy(asc(stores.name));
+  res.json({ stores: rows });
+});
+
 const storeBody = z.object({
   code: z.string().trim().min(2).max(6).toUpperCase(),
   slug: z.string().trim().regex(/^[a-z0-9-]{2,40}$/),

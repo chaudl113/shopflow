@@ -26,6 +26,7 @@ export const router = createRouter({
         { path: 'sales', component: () => import('@/views/SalesView.vue'), meta: { roles: sellers } },
         { path: 'shifts', component: () => import('@/views/ShiftsView.vue'), meta: { roles: sellers } },
         { path: 'products', component: () => import('@/views/ProductsView.vue') },
+        { path: 'transfers', component: () => import('@/views/TransfersView.vue'), meta: { roles: ['owner', 'manager'] } },
         { path: 'inventory', component: () => import('@/views/InventoryView.vue'), meta: { roles: ['owner', 'manager', 'cashier'] } },
       ],
     },

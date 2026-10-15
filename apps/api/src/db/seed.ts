@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { hashPassword } from '../auth.js';
 import { applyMovements } from '../inventory/ledger.js';
+import { getTransfers, receiveTransfer, sendTransfer } from '../transfers/transfers.js';
 import { db, pool } from './client.js';
 import { runMigrations } from './migrate.js';
 import { products, storePrices, stores, userStores, users, variants } from './schema.js';
@@ -129,7 +130,22 @@ export async function seed() {
     }
   });
 
-  return { downtown, uptown, warehouse, byEmail, variantBySku, productByName };
+  // Transfers: one completed with a shortfall, one still on the truck to Downtown.
+  const manager = byEmail.get('manager@shopflow.demo')!;
+  const daysAgo = (d: number, h = 10) => new Date(Date.now() - d * 86_400_000 + (h - 12) * 3_600_000);
+  const t1 = await sendTransfer(owner.id, { fromStoreId: warehouse.id, toStoreId: uptown.id, note: 'Weekly restock (demo)', lines: [
+    { variantId: variantBySku.get('SILK-CO')!.id, qty: 12 },
+    { variantId: variantBySku.get('NAIL-RBY')!.id, qty: 10 },
+  ] }, { at: daysAgo(3) });
+  const [t1Detail] = await getTransfers([t1]);
+  await receiveTransfer(owner.id, t1, { lines: [{ lineId: t1Detail!.lines.find((l) => l.sku === 'NAIL-RBY')!.id, qtyReceived: 9 }], note: 'One bottle broken in transit' }, { at: daysAgo(2) });
+  await sendTransfer(manager.id, { fromStoreId: warehouse.id, toStoreId: downtown.id, note: 'Restock low items (demo)', lines: [
+    { variantId: variantBySku.get('BR-RND-M')!.id, qty: 6 },
+    { variantId: variantBySku.get('NAIL-RBY')!.id, qty: 12 },
+    { variantId: variantBySku.get('DRY-ION-PL')!.id, qty: 3 },
+  ] }, { at: daysAgo(0, 9) });
+
+  return { downtown, uptown, warehouse, byEmail, variantBySku, productByName, daysAgo };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

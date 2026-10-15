@@ -10,6 +10,13 @@ export function parseMoney(input: string | number): number | null {
   return Math.round(Number(s) * 100);
 }
 
-export const dateTime = (iso: string, zone?: string) => DateTime.fromISO(iso, { zone }).toFormat('LLL d, yyyy · h:mm a');
-export const time = (iso: string, zone?: string) => DateTime.fromISO(iso, { zone }).toFormat('h:mm a');
-export const shortDate = (iso: string, zone?: string) => DateTime.fromISO(iso, { zone }).toFormat('ccc, LLL d');
+/** Accepts ISO strings and Postgres text timestamps ("2026-10-15 03:08:00.12+00"). */
+export function toDateTime(value: string, zone?: string): DateTime {
+  const iso = DateTime.fromISO(value, { setZone: true });
+  const dt = iso.isValid ? iso : DateTime.fromSQL(value, { setZone: true });
+  return zone ? dt.setZone(zone) : dt.toLocal();
+}
+
+export const dateTime = (v: string, zone?: string) => toDateTime(v, zone).toFormat('LLL d, yyyy · h:mm a');
+export const time = (v: string, zone?: string) => toDateTime(v, zone).toFormat('h:mm a');
+export const shortDate = (v: string, zone?: string) => toDateTime(v, zone).toFormat('ccc, LLL d');

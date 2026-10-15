@@ -14,6 +14,15 @@ inventoryRouter.get('/levels', async (req, res) => {
   const q = parse(z.object({ storeId: uuid, q: z.string().trim().max(80).optional() }), req.query);
   assertStoreAccess(authUser(req), q.storeId);
   const rows = await findVariants(db, { storeId: q.storeId, type: 'product', q: q.q });
+  // Stock already shipped to / from this location but not yet received.
+  const transit = await db.execute(sql`
+    select tl.variant_id as "variantId",
+           coalesce(sum(tl.qty_sent) filter (where t.to_store_id = ${q.storeId}), 0)::int as inbound,
+           coalesce(sum(tl.qty_sent) filter (where t.from_store_id = ${q.storeId}), 0)::int as outbound
+      from transfer_lines tl join transfers t on t.id = tl.transfer_id
+     where t.status = 'in_transit' and (t.to_store_id = ${q.storeId} or t.from_store_id = ${q.storeId})
+     group by tl.variant_id`);
+  const transitBy = new Map((transit.rows as { variantId: string; inbound: number; outbound: number }[]).map((r) => [r.variantId, r]));
   res.json({
     levels: rows.map((r) => ({
       variantId: r.id,
@@ -21,6 +30,8 @@ inventoryRouter.get('/levels', async (req, res) => {
       sku: r.sku,
       category: r.category,
       onHand: r.onHand ?? 0,
+      inbound: transitBy.get(r.id)?.inbound ?? 0,
+      outbound: transitBy.get(r.id)?.outbound ?? 0,
       reorderLevel: r.reorderLevel,
       low: (r.onHand ?? 0) <= r.reorderLevel,
       costCents: r.costCents,

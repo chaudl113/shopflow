@@ -15,7 +15,8 @@ interface Level {
   sku: string;
   category: string;
   onHand: number;
-  inbound?: number;
+  inbound: number;
+  outbound: number;
   reorderLevel: number;
   low: boolean;
   costCents: number;
@@ -142,6 +143,7 @@ async function submit() {
           <th>Item</th>
           <th>SKU</th>
           <th class="text-right">On hand</th>
+          <th class="text-right">In transit</th>
           <th class="text-right">Reorder at</th>
           <th class="text-right">Price</th>
           <th />
@@ -158,12 +160,16 @@ async function submit() {
             <span :class="l.onHand < 0 ? 'text-rose-700' : l.low ? 'font-semibold text-amber-600' : ''">{{ l.onHand }}</span>
             <span v-if="l.low" class="badge ml-2 bg-amber-50 text-amber-700">low</span>
           </td>
+          <td class="text-right text-xs tabular-nums">
+            <span v-if="l.inbound" class="text-sky-700">+{{ l.inbound }} in</span>
+            <span v-if="l.outbound" class="ml-1 text-slate-500">−{{ l.outbound }} out</span>
+          </td>
           <td class="text-right tabular-nums text-slate-500">{{ l.reorderLevel }}</td>
           <td class="text-right tabular-nums">{{ money(l.priceCents) }}</td>
           <td class="text-right"><button class="btn-ghost px-2 py-1 text-indigo-600" @click="openLedger(l)">History</button></td>
         </tr>
         <tr v-if="!loading && shown.length === 0">
-          <td colspan="6" class="py-10 text-center text-slate-500">Nothing here.</td>
+          <td colspan="7" class="py-10 text-center text-slate-500">Nothing here.</td>
         </tr>
       </tbody>
     </table>
@@ -177,7 +183,7 @@ async function submit() {
       </thead>
       <tbody>
         <tr v-for="m in movements" :key="m.id">
-          <td class="whitespace-nowrap text-xs text-slate-500">{{ dateTime(m.createdAt) }}</td>
+          <td class="whitespace-nowrap text-xs text-slate-500">{{ dateTime(m.createdAt, session.currentStore?.timezone) }}</td>
           <td>{{ kindLabel[m.kind] ?? m.kind }}<span v-if="m.note" class="block text-xs text-slate-400">{{ m.note }}</span></td>
           <td class="text-xs">{{ m.userName ?? '—' }}</td>
           <td class="text-right font-medium tabular-nums" :class="m.qty < 0 ? 'text-rose-600' : 'text-emerald-600'">{{ m.qty > 0 ? '+' : '' }}{{ m.qty }}</td>

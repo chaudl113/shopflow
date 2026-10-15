@@ -10,6 +10,7 @@ import { productsRouter } from './routes/products.js';
 import { salesRouter } from './routes/sales.js';
 import { shiftsRouter } from './routes/shifts.js';
 import { storesRouter } from './routes/stores.js';
+import { transfersRouter } from './routes/transfers.js';
 import { usersRouter } from './routes/users.js';
 
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
   api.use('/inventory', inventoryRouter);
   api.use('/sales', salesRouter);
   api.use('/shifts', shiftsRouter);
+  api.use('/transfers', transfersRouter);
   app.use('/api', api);
 
   app.use('/api', (_req, res) => {

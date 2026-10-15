@@ -30,6 +30,7 @@ export const movementKind = pgEnum('movement_kind', [
 
 export const shiftStatus = pgEnum('shift_status', ['open', 'closed']);
 export const paymentMethod = pgEnum('payment_method', ['cash', 'card', 'other']);
+export const transferStatus = pgEnum('transfer_status', ['in_transit', 'received', 'cancelled']);
 export const cashMovementKind = pgEnum('cash_movement_kind', ['pay_in', 'pay_out']);
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -280,4 +281,37 @@ export const payments = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('payments_shift_idx').on(t.shiftId), index('payments_sale_idx').on(t.saleId)],
+);
+
+/** Two-step transfer: stock leaves the source on send and lands at the destination on receive. */
+export const transfers = pgTable(
+  'transfers',
+  {
+    id: uuid('id').primaryKey(),
+    number: text('number').notNull().unique(),
+    fromStoreId: uuid('from_store_id').notNull().references(() => stores.id),
+    toStoreId: uuid('to_store_id').notNull().references(() => stores.id),
+    status: transferStatus('status').notNull().default('in_transit'),
+    note: text('note').notNull().default(''),
+    receiveNote: text('receive_note').notNull().default(''),
+    sentBy: uuid('sent_by').notNull().references(() => users.id),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    receivedBy: uuid('received_by').references(() => users.id),
+    receivedAt: timestamp('received_at', { withTimezone: true }),
+    cancelledBy: uuid('cancelled_by').references(() => users.id),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  },
+  (t) => [index('transfers_to_status_idx').on(t.toStoreId, t.status), index('transfers_from_idx').on(t.fromStoreId)],
+);
+
+export const transferLines = pgTable(
+  'transfer_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transferId: uuid('transfer_id').notNull().references(() => transfers.id),
+    variantId: uuid('variant_id').notNull().references(() => variants.id),
+    qtySent: integer('qty_sent').notNull(),
+    qtyReceived: integer('qty_received'),
+  },
+  (t) => [index('transfer_lines_transfer_idx').on(t.transferId)],
 );
