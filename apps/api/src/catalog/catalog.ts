@@ -32,6 +32,7 @@ export interface CatalogFilter {
 
 /** Variants with their effective price (store override or default) and on-hand at the store. */
 export async function findVariants(db: DbOrTx, f: CatalogFilter): Promise<VariantView[]> {
+  if (f.variantIds && f.variantIds.length === 0) return [];
   const storeId = f.storeId ?? null;
   const like = f.q ? `%${f.q.replace(/[%_]/g, '\\$&')}%` : null;
   const res = await db.execute(sql`
@@ -50,8 +51,9 @@ export async function findVariants(db: DbOrTx, f: CatalogFilter): Promise<Varian
      where (${f.includeInactive ?? false} or (v.active and p.active))
        and (${f.type ?? null}::product_type is null or p.type = ${f.type ?? null}::product_type)
        and (${like}::text is null or p.name ilike ${like} or v.sku ilike ${like} or v.name ilike ${like} or p.category ilike ${like})
-       and (${f.code ?? null}::text is null or v.barcode = ${f.code ?? null} or lower(v.sku) = lower(${f.code ?? null}))
-       ${f.variantIds ? sql`and v.id = any(${f.variantIds}::uuid[])` : sql``}
+       -- A UPC-A scan (12 digits) matches the same item stored as EAN-13 with a leading zero.
+       and (${f.code ?? null}::text is null or v.barcode = ${f.code ?? null} or v.barcode = '0' || ${f.code ?? null} or lower(v.sku) = lower(${f.code ?? null}))
+       ${f.variantIds ? sql`and v.id in (${sql.join(f.variantIds.map((id) => sql`${id}::uuid`), sql`, `)})` : sql``}
      order by p.name, v.name`);
   return (res.rows as unknown as Omit<VariantView, 'label'>[]).map((r) => ({
     ...r,

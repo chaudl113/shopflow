@@ -15,6 +15,8 @@ export interface MovementInput {
   refId?: string;
   note?: string;
   userId?: string;
+  /** Only used by the demo seed to backfill history. */
+  createdAt?: Date;
 }
 
 const keyOf = (storeId: string, variantId: string) => `${storeId}:${variantId}`;
@@ -117,6 +119,7 @@ export async function applyMovements(tx: Tx, moves: MovementInput[]) {
       refId: m.refId ?? null,
       note: m.note ?? '',
       userId: m.userId ?? null,
+      ...(m.createdAt ? { createdAt: m.createdAt } : {}),
     })),
   );
 }

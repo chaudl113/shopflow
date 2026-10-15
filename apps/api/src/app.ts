@@ -7,6 +7,8 @@ import { errorHandler } from './lib/errors.js';
 import { authRouter } from './routes/auth.js';
 import { inventoryRouter } from './routes/inventory.js';
 import { productsRouter } from './routes/products.js';
+import { salesRouter } from './routes/sales.js';
+import { shiftsRouter } from './routes/shifts.js';
 import { storesRouter } from './routes/stores.js';
 import { usersRouter } from './routes/users.js';
 
@@ -28,6 +30,8 @@ export function createApp() {
   api.use('/users', usersRouter);
   api.use('/products', productsRouter);
   api.use('/inventory', inventoryRouter);
+  api.use('/sales', salesRouter);
+  api.use('/shifts', shiftsRouter);
   app.use('/api', api);
 
   app.use('/api', (_req, res) => {

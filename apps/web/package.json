@@ -23,6 +23,7 @@
     "vue-tsc": "^3.3.13"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
     "luxon": "^3.7.2",
     "pinia": "^4.1.0",
     "vue": "^3.5.44",

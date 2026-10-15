@@ -10,15 +10,21 @@ declare module 'vue-router' {
   }
 }
 
+const sellers: Role[] = ['owner', 'manager', 'cashier'];
+
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/receipt/:id', component: () => import('@/views/ReceiptView.vue') },
     {
       path: '/',
       component: AppShell,
       children: [
         { path: '', redirect: () => homeFor(useSession().user?.role ?? 'staff') },
+        { path: 'pos', component: () => import('@/views/PosView.vue'), meta: { roles: sellers } },
+        { path: 'sales', component: () => import('@/views/SalesView.vue'), meta: { roles: sellers } },
+        { path: 'shifts', component: () => import('@/views/ShiftsView.vue'), meta: { roles: sellers } },
         { path: 'products', component: () => import('@/views/ProductsView.vue') },
         { path: 'inventory', component: () => import('@/views/InventoryView.vue'), meta: { roles: ['owner', 'manager', 'cashier'] } },
       ],

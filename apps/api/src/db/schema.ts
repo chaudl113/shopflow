@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   bigserial,
   boolean,
@@ -8,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -25,6 +27,10 @@ export const movementKind = pgEnum('movement_kind', [
   'transfer_in',
   'transfer_cancel',
 ]);
+
+export const shiftStatus = pgEnum('shift_status', ['open', 'closed']);
+export const paymentMethod = pgEnum('payment_method', ['cash', 'card', 'other']);
+export const cashMovementKind = pgEnum('cash_movement_kind', ['pay_in', 'pay_out']);
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
@@ -143,4 +149,135 @@ export const counters = pgTable(
     value: integer('value').notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.scope, t.kind] })],
+);
+
+/** A cashier's drawer session. At most one open shift per user (partial unique index). */
+export const shifts = pgTable(
+  'shifts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    storeId: uuid('store_id').notNull().references(() => stores.id),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    status: shiftStatus('status').notNull().default('open'),
+    openingFloatCents: integer('opening_float_cents').notNull(),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => users.id),
+    expectedCashCents: integer('expected_cash_cents'),
+    countedCashCents: integer('counted_cash_cents'),
+    differenceCents: integer('difference_cents'),
+    closingNote: text('closing_note').notNull().default(''),
+  },
+  (t) => [
+    uniqueIndex('shifts_one_open_per_user').on(t.userId).where(sql`status = 'open'`),
+    index('shifts_store_idx').on(t.storeId, t.openedAt),
+  ],
+);
+
+export const cashMovements = pgTable('cash_movements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  shiftId: uuid('shift_id').notNull().references(() => shifts.id),
+  kind: cashMovementKind('kind').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  reason: text('reason').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  createdAt: createdAt(),
+});
+
+export const sales = pgTable(
+  'sales',
+  {
+    id: uuid('id').primaryKey(),
+    number: text('number').notNull().unique(),
+    /** Client-generated id that makes "Charge" safe to retry (double click, flaky network). */
+    clientRef: uuid('client_ref').unique(),
+    storeId: uuid('store_id').notNull().references(() => stores.id),
+    shiftId: uuid('shift_id').notNull().references(() => shifts.id),
+    cashierId: uuid('cashier_id').notNull().references(() => users.id),
+    customerName: text('customer_name').notNull().default(''),
+    subtotalCents: integer('subtotal_cents').notNull(),
+    discountCents: integer('discount_cents').notNull(),
+    taxCents: integer('tax_cents').notNull(),
+    totalCents: integer('total_cents').notNull(),
+    changeCents: integer('change_cents').notNull().default(0),
+    taxRateBps: integer('tax_rate_bps').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('sales_store_created_idx').on(t.storeId, t.createdAt)],
+);
+
+export const saleLines = pgTable(
+  'sale_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    saleId: uuid('sale_id').notNull().references(() => sales.id),
+    position: integer('position').notNull(),
+    variantId: uuid('variant_id').notNull().references(() => variants.id),
+    /** Who performed a service (commission/revenue by staff). */
+    staffId: uuid('staff_id').references(() => users.id),
+    isService: boolean('is_service').notNull(),
+    name: text('name').notNull(),
+    sku: text('sku').notNull(),
+    qty: integer('qty').notNull(),
+    unitPriceCents: integer('unit_price_cents').notNull(),
+    lineDiscountCents: integer('line_discount_cents').notNull(),
+    orderDiscountCents: integer('order_discount_cents').notNull(),
+    netCents: integer('net_cents').notNull(),
+    taxCents: integer('tax_cents').notNull(),
+    totalCents: integer('total_cents').notNull(),
+    unitCostCents: integer('unit_cost_cents').notNull().default(0),
+  },
+  (t) => [index('sale_lines_sale_idx').on(t.saleId)],
+);
+
+export const saleReturns = pgTable(
+  'sale_returns',
+  {
+    id: uuid('id').primaryKey(),
+    number: text('number').notNull().unique(),
+    clientRef: uuid('client_ref').unique(),
+    saleId: uuid('sale_id').notNull().references(() => sales.id),
+    storeId: uuid('store_id').notNull().references(() => stores.id),
+    shiftId: uuid('shift_id').notNull().references(() => shifts.id),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    reason: text('reason').notNull().default(''),
+    netCents: integer('net_cents').notNull(),
+    taxCents: integer('tax_cents').notNull(),
+    totalCents: integer('total_cents').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('sale_returns_sale_idx').on(t.saleId)],
+);
+
+export const returnLines = pgTable(
+  'return_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    returnId: uuid('return_id').notNull().references(() => saleReturns.id),
+    saleLineId: uuid('sale_line_id').notNull().references(() => saleLines.id),
+    qty: integer('qty').notNull(),
+    restock: boolean('restock').notNull(),
+    netCents: integer('net_cents').notNull(),
+    taxCents: integer('tax_cents').notNull(),
+    totalCents: integer('total_cents').notNull(),
+  },
+  (t) => [index('return_lines_sale_line_idx').on(t.saleLineId)],
+);
+
+/** Money in (sale) is positive, money out (refund) is negative. Drawer cash = sum of cash rows. */
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    shiftId: uuid('shift_id').notNull().references(() => shifts.id),
+    saleId: uuid('sale_id').references(() => sales.id),
+    returnId: uuid('return_id').references(() => saleReturns.id),
+    method: paymentMethod('method').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    tenderedCents: integer('tendered_cents').notNull(),
+    changeCents: integer('change_cents').notNull().default(0),
+    reference: text('reference'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payments_shift_idx').on(t.shiftId), index('payments_sale_idx').on(t.saleId)],
 );
